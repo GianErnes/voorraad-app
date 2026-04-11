@@ -1,4 +1,4 @@
- 
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -814,9 +814,9 @@ function openProjDetail(id) {
 // ====================== CATEGORIES ======================
 function renderSettings() {
   document.getElementById('cat-list').innerHTML=db.categories.length===0?'<div class="empty" style="padding:10px 0">Geen categorieën</div>':
-    db.categories.map(c=>`<div class="cat-tag">
+    db.categories.map((c,i)=>`<div class="cat-tag">
       <span class="cat-name">${c}</span>
-      <button class="cat-del" onclick="deleteCategory(${JSON.stringify(c)})">×</button>
+      <button class="cat-del" onclick="deleteCategory(${i})">×</button>
     </div>`).join('');
 }
 async function addCategory() {
@@ -827,11 +827,13 @@ async function addCategory() {
   document.getElementById('new-cat-input').value='';
   await loadAll(); renderSettings();
 }
-async function deleteCategory(name) {
+async function deleteCategory(idx) {
+  const name=db.categories[idx]; if(!name) return;
   const inUse=db.products.some(p=>p.cat===name);
   if(inUse&&!confirm(`Categorie "${name}" is in gebruik. Toch verwijderen?`)) return;
   setSyncing('syncing');
-  await dbDelete('categories', `name=eq.${name}`);
+  const encoded=encodeURIComponent(name);
+  await dbDelete('categories', `name=eq.${encoded}`);
   await loadAll(); renderSettings();
 }
 
