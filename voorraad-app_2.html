@@ -456,7 +456,7 @@ function renderDashboard() {
 let activeCat='Alles';
 function renderStock() {
   const cats=['Alles',...db.categories];
-  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(${JSON.stringify(c)})">${c}</div>`).join('');
+  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.replace(/"/g,'&quot;')}">${c}</div>`).join('');
   const prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten</div>':
     prods.map(p=>{
@@ -469,7 +469,7 @@ function renderStock() {
       </div>`;
     }).join('');
 }
-function filterCat(c) { activeCat=c; renderStock(); }
+function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
 
 // ====================== PROJECTS ======================
 function renderProjects() {
