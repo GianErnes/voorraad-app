@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Voorraad">
+<title>Voorraad – Schildersbedrijf</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3347;
+    --accent:#e8a048;--accent2:#5b8ef0;--red:#e05c5c;--green:#4caf7d;
+    --text:#e8eaf0;--muted:#6b7280;--radius:14px;--tab-h:68px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100dvh;overflow-x:hidden;}
+  /* SYNC INDICATOR */
+  .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-left:8px;vertical-align:middle;transition:background .3s;}
+  .sync-dot.syncing{background:var(--accent);animation:pulse 1s infinite;}
+  .sync-dot.error{background:var(--red);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  /* LOADING */
+  #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+  .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .header{padding:52px 20px 14px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+  .header h1{font-size:22px;font-weight:600;letter-spacing:-.5px;}
+  .header p{font-size:12px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;}
+  .tabs{position:fixed;bottom:0;left:0;right:0;height:var(--tab-h);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom);}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;transition:color .2s;padding-top:6px;}
+  .tab.active{color:var(--accent);}
+  .tab svg{width:22px;height:22px;}
+  .content{padding:16px 16px calc(var(--tab-h)+16px+env(safe-area-inset-bottom));}
+  .page{display:none;}.page.active{display:block;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
+  .card-row{display:flex;justify-content:space-between;align-items:center;}
+  .card-title{font-weight:500;font-size:15px;}
+  .card-sub{font-size:12px;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace;}
+  .badge{font-size:11px;font-family:'DM Mono',monospace;padding:3px 8px;border-radius:20px;font-weight:500;}
+  .badge-ok{background:rgba(76,175,125,.15);color:var(--green);}
+  .badge-low{background:rgba(232,100,70,.15);color:var(--red);}
+  .badge-warn{background:rgba(232,160,72,.15);color:var(--accent);}
+  .badge-blue{background:rgba(91,142,240,.15);color:var(--accent2);}
+  .stock-bar-wrap{margin-top:10px;}
+  .stock-bar-bg{height:5px;background:var(--border);border-radius:10px;overflow:hidden;}
+  .stock-bar-fill{height:100%;border-radius:10px;transition:width .4s;}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:opacity .15s,transform .1s;text-decoration:none;}
+  .btn:active{transform:scale(.97);opacity:.85;}
+  .btn-primary{background:var(--accent);color:#000;}
+  .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+  .btn-danger{background:rgba(224,92,92,.15);color:var(--red);border:1px solid rgba(224,92,92,.3);}
+  .btn-green{background:rgba(76,175,125,.15);color:var(--green);border:1px solid rgba(76,175,125,.3);}
+  .btn-full{width:100%;justify-content:center;margin-top:8px;}
+  .form-group{margin-bottom:14px;}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px;font-family:'DM Mono',monospace;}
+  input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:12px 14px;-webkit-appearance:none;outline:none;transition:border-color .2s;}
+  input:focus,select:focus{border-color:var(--accent2);}
+  select option{background:var(--surface2);}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:90dvh;overflow-y:auto;}
+  .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
+  .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
+  .fab{position:fixed;right:20px;bottom:calc(var(--tab-h)+16px+env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#000;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(232,160,72,.35);z-index:150;transition:transform .15s;}
+  .fab:active{transform:scale(.92);}
+  .section-hdr{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px;}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+  .stat-val{font-size:26px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);}
+  .stat-lbl{font-size:11px;color:var(--muted);margin-top:4px;}
+  .proj-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+  .proj-item:last-child{border-bottom:none;}
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .chip{padding:6px 14px;border-radius:20px;font-size:13px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .15s;white-space:nowrap;}
+  .chip.active{background:var(--accent);color:#000;border-color:var(--accent);}
+  .action-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;}
+  .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
+  .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
+  .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}
+  .hist-text{font-size:13px;}
+  .hist-date{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+  hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
+  .stepper{display:flex;align-items:center;gap:10px;}
+  .stepper button{width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .stepper input{width:60px;text-align:center;}
+  .sup-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden;}
+  .sup-block-hdr{background:var(--surface2);padding:12px 14px;border-bottom:1px solid var(--border);}
+  .sup-block-hdr-name{font-weight:600;font-size:15px;}
+  .sup-block-hdr-sub{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:3px;}
+  .sup-block-body{padding:0 14px;}
+  .sup-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
+  .sup-row:last-of-type{border-bottom:none;}
+  .sup-block-footer{padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;}
+  .cat-tag{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);}
+  .cat-tag:last-child{border-bottom:none;}
+  .cat-name{flex:1;font-size:14px;}
+  .cat-del{background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:2px 8px;}
+  .recv-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
+  .recv-row:last-child{border-bottom:none;}
+  .btn-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .btn-row .btn{flex:1;justify-content:center;min-width:80px;}
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:var(--muted)">Verbinden met server…</div>
+</div>
+
+<div class="header">
+  <h1 id="page-title">Dashboard</h1>
+  <p id="page-sub">Voorraadoverzicht <span class="sync-dot" id="sync-dot" title="Synchronisatiestatus"></span></p>
+</div>
+
+<div class="content">
+  <div class="page active" id="page-dashboard">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div class="section-hdr">⚠️ Laag op voorraad</div>
+    <div id="low-stock-list"></div>
+    <div class="section-hdr">📋 Recente activiteit</div>
+    <div id="recent-activity"></div>
+  </div>
+  <div class="page" id="page-stock">
+    <div class="chip-row" id="cat-filters"></div>
+    <div id="stock-list"></div>
+  </div>
+  <div class="page" id="page-projects">
+    <div id="projects-list"></div>
+  </div>
+  <div class="page" id="page-orders">
+    <div class="action-bar">
+      <button class="btn btn-secondary" onclick="exportAllOrders()">📤 Exporteer alles</button>
+      <button class="btn btn-primary" onclick="openReceiveAllModal()">📦 Alles ontvangen</button>
+    </div>
+    <div class="section-hdr">Te bestellen — week <span id="order-week"></span></div>
+    <div id="order-by-supplier"></div>
+    <div class="section-hdr">Alle leveranciers</div>
+    <div id="supplier-list"></div>
+  </div>
+  <div class="page" id="page-settings">
+    <div class="section-hdr">Categorieën beheren</div>
+    <div class="card">
+      <div id="cat-list"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <input id="new-cat-input" placeholder="Nieuwe categorie…" style="flex:1">
+        <button class="btn btn-primary" onclick="addCategory()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
+      </div>
+    </div>
+    <div class="section-hdr">Data</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Data wordt automatisch gesynchroniseerd via de cloud.</p>
+      <button class="btn btn-secondary btn-full" onclick="exportData()">💾 Exporteer back-up (JSON)</button>
+    </div>
+  </div>
+</div>
+
+<button class="fab" onclick="openFab()">+</button>
+
+<nav class="tabs">
+  <div class="tab active" onclick="setPage('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Dashboard
+  </div>
+  <div class="tab" onclick="setPage('stock')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+    Voorraad
+  </div>
+  <div class="tab" onclick="setPage('projects')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+    Projecten
+  </div>
+  <div class="tab" onclick="setPage('orders')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 12l2 2 4-4"/></svg>
+    Bestellen
+  </div>
+  <div class="tab" onclick="setPage('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    Instellingen
+  </div>
+</nav>
+
+<!-- MODALS -->
+<!-- ADD/EDIT PRODUCT -->
+<div class="modal-overlay" id="modal-product">
+  <div class="modal">
+    <div class="modal-title"><span id="product-modal-title">Product toevoegen</span><span class="modal-close" onclick="closeModal('modal-product')">×</span></div>
+    <input type="hidden" id="p-id">
+    <div class="form-group"><label>NAAM</label><input id="p-name" placeholder="bv. Muurverf Wit 10L"></div>
+    <div class="form-group"><label>BARCODE (optioneel)</label>
+      <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
+      <button class="btn btn-secondary" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
+    </div>
+    <div class="form-group"><label>CATEGORIE</label><select id="p-cat"></select></div>
+    <div class="form-group"><label>EENHEID</label>
+      <select id="p-unit"><option>emmer</option><option>blik</option><option>rol</option><option>stuk</option><option>meter</option><option>liter</option></select>
+    </div>
+    <div class="form-group"><label>HUIDIGE VOORRAAD</label><input id="p-qty" type="number" min="0" placeholder="0"></div>
+    <div class="form-group"><label>MINIMUMVOORRAAD</label><input id="p-min" type="number" min="0" placeholder="5"></div>
+    <div class="form-group"><label>PRIJS PER EENHEID (€)</label><input id="p-price" type="number" step="0.01" placeholder="0.00"></div>
+    <div class="form-group"><label>LEVERANCIER</label><select id="p-supplier"></select></div>
+    <button class="btn btn-primary btn-full" onclick="saveProduct()">Opslaan</button>
+    <button class="btn btn-danger btn-full" id="p-delete-btn" onclick="deleteProduct()" style="display:none;margin-top:8px">Verwijderen</button>
+  </div>
+</div>
+<!-- ADD PROJECT -->
+<div class="modal-overlay" id="modal-project">
+  <div class="modal">
+    <div class="modal-title">Nieuw project<span class="modal-close" onclick="closeModal('modal-project')">×</span></div>
+    <div class="form-group"><label>PROJECTNAAM</label><input id="pr-name" placeholder="bv. Kantoor Visserstraat"></div>
+    <div class="form-group"><label>KLANT</label><input id="pr-client" placeholder="Naam klant"></div>
+    <div class="form-group"><label>STARTDATUM</label><input id="pr-date" type="date"></div>
+    <button class="btn btn-primary btn-full" onclick="saveProject()">Aanmaken</button>
+  </div>
+</div>
+<!-- ISSUE MATERIAL -->
+<div class="modal-overlay" id="modal-issue">
+  <div class="modal">
+    <div class="modal-title"><span id="issue-title-text">Materiaal uitgeven</span><span class="modal-close" onclick="closeModal('modal-issue')">×</span></div>
+    <div class="form-group">
+      <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
+      <label>PRODUCT</label><select id="issue-product"></select>
+    </div>
+    <div class="form-group"><label>HOEVEELHEID</label>
+      <div class="stepper"><button onclick="stepVal('issue-qty',-1)">−</button><input id="issue-qty" type="number" value="1" min="1"><button onclick="stepVal('issue-qty',1)">+</button></div>
+    </div>
+    <div class="form-group"><label>PROJECT</label><select id="issue-project"></select></div>
+    <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
+    <button class="btn btn-primary btn-full" id="issue-confirm-btn" onclick="confirmIssue()">Bevestigen</button>
+  </div>
+</div>
+<!-- RECEIVE SINGLE SUPPLIER -->
+<div class="modal-overlay" id="modal-receive-sup">
+  <div class="modal">
+    <div class="modal-title"><span id="recv-sup-title">Ontvangen</span><span class="modal-close" onclick="closeModal('modal-receive-sup')">×</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Pas aantallen aan en bevestig ontvangst.</p>
+    <div id="recv-sup-list"></div>
+    <button class="btn btn-green btn-full" onclick="confirmReceiveSup()">✅ Voorraad bijwerken</button>
+  </div>
+</div>
+<!-- RECEIVE ALL -->
+<div class="modal-overlay" id="modal-receive-all">
+  <div class="modal">
+    <div class="modal-title">Alle bestellingen ontvangen<span class="modal-close" onclick="closeModal('modal-receive-all')">×</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Alle producten onder minimumvoorraad.</p>
+    <div id="recv-all-list"></div>
+    <button class="btn btn-green btn-full" onclick="confirmReceiveAll()">✅ Voorraad bijwerken</button>
+  </div>
+</div>
+<!-- ADD SUPPLIER -->
+<div class="modal-overlay" id="modal-supplier">
+  <div class="modal">
+    <div class="modal-title">Leverancier toevoegen<span class="modal-close" onclick="closeModal('modal-supplier')">×</span></div>
+    <div class="form-group"><label>NAAM</label><input id="sup-name" placeholder="bv. Sikkens Dealer"></div>
+    <div class="form-group"><label>CONTACTPERSOON</label><input id="sup-contact" placeholder=""></div>
+    <div class="form-group"><label>EMAIL</label><input id="sup-email" type="email" placeholder=""></div>
+    <div class="form-group"><label>TELEFOON</label><input id="sup-phone" type="tel" placeholder=""></div>
+    <button class="btn btn-primary btn-full" onclick="saveSupplier()">Opslaan</button>
+  </div>
+</div>
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="modal-detail">
+  <div class="modal">
+    <div class="modal-title"><span id="detail-title">Detail</span><span class="modal-close" onclick="closeModal('modal-detail')">×</span></div>
+    <div id="detail-content"></div>
+  </div>
+</div>
+<!-- SCANNER MODAL -->
+<div class="modal-overlay" id="modal-scanner" style="align-items:center;justify-content:center">
+  <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px">
+    <div class="modal-title">Scan barcode<span class="modal-close" onclick="stopScan()">×</span></div>
+    <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;width:100%;aspect-ratio:1">
+      <video id="scan-video" style="width:100%;height:100%;object-fit:cover" playsinline autoplay muted></video>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+        <div style="width:65%;height:65%;border:2px solid var(--accent);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,0.45)"></div>
+      </div>
+    </div>
+    <p id="scan-status" style="text-align:center;font-size:13px;color:var(--muted);margin-top:12px">Richt de camera op een barcode…</p>
+  </div>
+</div>
+<!-- EXPORT MODAL -->
+<div class="modal-overlay" id="modal-export">
+  <div class="modal">
+    <div class="modal-title"><span id="export-modal-title">Bestellijst</span><span class="modal-close" onclick="closeModal('modal-export')">×</span></div>
+    <p id="export-modal-msg" style="font-size:13px;color:var(--muted);margin-bottom:12px"></p>
+    <textarea id="export-textarea" readonly style="font-family:'DM Mono',monospace;font-size:12px;line-height:1.6;height:280px;resize:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px;width:100%"></textarea>
+    <button class="btn btn-primary btn-full" onclick="copyExportText()" style="margin-top:10px">📋 Kopieer naar klembord</button>
+  </div>
+</div>
+<!-- FAB MENU -->
+<div class="modal-overlay" id="modal-fab">
+  <div class="modal">
+    <div class="modal-title">Actie kiezen<span class="modal-close" onclick="closeModal('modal-fab')">×</span></div>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProductModal()">📦 Product toevoegen</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openModal('modal-project');document.getElementById('pr-date').value=today()">🏗️ Nieuw project</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
+    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openModal('modal-supplier')">🏢 Leverancier toevoegen</button>
+  </div>
+</div>
+
+<script>
+// ====================== SUPABASE ======================
+// ====================== SUPABASE DIRECT FETCH (geen library) ======================
+const SUPA_URL = 'https://rcwlbcfuvfprnnkypbba.supabase.co';
+const SUPA_KEY = 'sb_publishable_1z1Igz3u6xBMvDFxpHiQmA_KJlhzbwW';
+
+async function dbGet(table, params='') {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+  });
+  if(!r.ok) throw new Error(`GET ${table}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function dbPost(table, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok) throw new Error(`POST ${table}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function dbPatch(table, match, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
+    method: 'PATCH',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok) throw new Error(`PATCH ${table}: ${r.status} ${await r.text()}`);
+}
+async function dbDelete(table, match) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
+    method: 'DELETE',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Prefer': 'return=minimal' }
+  });
+  if(!r.ok) throw new Error(`DELETE ${table}: ${r.status} ${await r.text()}`);
+}
+
+// ====================== LOCAL STATE ======================
+let db = { categories:[], suppliers:[], products:[], projects:[], history:[] };
+
+function setSyncing(state) {
+  const dot = document.getElementById('sync-dot');
+  if(dot) dot.className = 'sync-dot' + (state==='syncing'?' syncing':state==='error'?' error':'');
+}
+
+// ====================== LOAD ALL DATA ======================
+async function loadAll() {
+  setSyncing('syncing');
+  try {
+    const [cats, sups, prods, projs, hist] = await Promise.all([
+      dbGet('categories', 'order=name.asc'),
+      dbGet('suppliers',  'order=name.asc'),
+      dbGet('products',   'order=name.asc'),
+      dbGet('projects',   'order=date.desc'),
+      dbGet('history',    'order=created_at.desc&limit=200'),
+    ]);
+    db.categories = cats.map(r=>r.name);
+    db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,price:Number(r.price)||0,supplier:r.supplier_id,barcode:r.barcode||null}));
+    db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
+    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
+    setSyncing('ok');
+    document.getElementById('loading-screen').style.display='none';
+    renderPage(currentPage);
+  } catch(e) {
+    console.error('Laad fout:', e);
+    setSyncing('error');
+    document.getElementById('loading-screen').innerHTML=`
+      <div style="padding:30px;text-align:center">
+        <div style="font-size:40px;margin-bottom:16px">⚠️</div>
+        <div style="color:var(--red);font-size:15px;margin-bottom:8px">Verbindingsfout</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:20px;font-family:'DM Mono',monospace">${e.message||'Onbekende fout'}</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:20px">Controleer of de SQL is uitgevoerd in Supabase.</div>
+        <button class="btn btn-primary" onclick="loadAll()">🔄 Opnieuw proberen</button>
+      </div>`;
+  }
+}
+
+// ====================== REALTIME (polling elke 10 sec) ======================
+function setupRealtime() {
+  setInterval(()=>{ if(document.visibilityState==='visible') loadAll(); }, 10000);
+}
+
+// ====================== HELPERS ======================
+function today() { return new Date().toISOString().slice(0,10); }
+function getWeek(d) { const j=new Date(d.getFullYear(),0,1); return Math.ceil((((d-j)/86400000)+j.getDay()+1)/7); }
+function supplierName(id) { const s=db.suppliers.find(s=>s.id===id); return s?s.name:'—'; }
+function stockStatus(p) {
+  const r=p.qty/Math.max(p.min,0.001);
+  if(r<=0) return ['badge-low','Leeg'];
+  if(r<1)  return ['badge-low','Laag'];
+  if(r<1.5)return ['badge-warn','Bijna op'];
+  return ['badge-ok','OK'];
+}
+function barColor(p) { const r=p.qty/Math.max(p.min,0.001); return r<1?'var(--red)':r<1.5?'var(--accent)':'var(--green)'; }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openFab() { openModal('modal-fab'); }
+function stepVal(id,d) { const el=document.getElementById(id); el.value=Math.max(1,(parseInt(el.value)||1)+d); }
+function fillCatSelect(id) { document.getElementById(id).innerHTML=db.categories.map(c=>`<option>${c}</option>`).join(''); }
+function fillSupplierSelect(id) { document.getElementById(id).innerHTML=db.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); }
+
+// ====================== ROUTING ======================
+let currentPage='dashboard';
+function setPage(p) {
+  currentPage=p;
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  const idx=['dashboard','stock','projects','orders','settings'].indexOf(p);
+  if(idx>=0) document.querySelectorAll('.tab')[idx].classList.add('active');
+  const titles={dashboard:'Dashboard',stock:'Voorraad',projects:'Projecten',orders:'Bestellijst',settings:'Instellingen'};
+  const subs={dashboard:'Voorraadoverzicht',stock:'Alle materialen',projects:'Lopende & voltooide projecten',orders:'Weekbestelling per leverancier',settings:'Categorieën & data'};
+  document.getElementById('page-title').textContent=titles[p]||p;
+  document.getElementById('page-sub').innerHTML=(subs[p]||'')+' <span class="sync-dot" id="sync-dot"></span>';
+  renderPage(p);
+}
+function renderPage(p) {
+  ({dashboard:renderDashboard,stock:renderStock,projects:renderProjects,orders:renderOrders,settings:renderSettings}[p]||function(){})();
+}
+
+// ====================== DASHBOARD ======================
+function renderDashboard() {
+  const low=db.products.filter(p=>p.qty<p.min);
+  const totalVal=db.products.reduce((s,p)=>s+p.qty*p.price,0);
+  document.getElementById('stat-grid').innerHTML=`
+    <div class="stat-card"><div class="stat-val">${db.products.length}</div><div class="stat-lbl">Producten</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:${low.length?'var(--red)':'var(--green)'}">${low.length}</div><div class="stat-lbl">Laag op voorraad</div></div>
+    <div class="stat-card"><div class="stat-val" style="font-size:20px">€${totalVal.toFixed(0)}</div><div class="stat-lbl">Voorraadwaarde</div></div>
+    <div class="stat-card"><div class="stat-val">${db.projects.filter(p=>p.status==='actief').length}</div><div class="stat-lbl">Actieve projecten</div></div>`;
+  document.getElementById('low-stock-list').innerHTML=low.length===0?'<div class="empty">✅ Alles op peil</div>':
+    low.map(p=>`<div class="card" onclick="openProductDetail(${p.id})">
+      <div class="card-row"><span class="card-title">${p.name}</span><span class="badge badge-low">${p.qty} ${p.unit}</span></div>
+      <div class="card-sub">Min: ${p.min} · ${supplierName(p.supplier)}</div>
+    </div>`).join('');
+  const recent=db.history.slice(0,8);
+  document.getElementById('recent-activity').innerHTML=recent.length===0?'<div class="empty">Nog geen activiteit</div>':
+    recent.map(h=>{
+      const prod=db.products.find(p=>p.id===h.productId);
+      const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
+      return `<div class="hist-item"><div class="hist-dot ${h.type}"></div>
+        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${proj?' → '+proj.name:''}</div>
+        <div class="hist-date">${h.date}${h.note?' · '+h.note:''}</div></div></div>`;
+    }).join('');
+}
+
+// ====================== STOCK ======================
+let activeCat='Alles';
+function renderStock() {
+  const cats=['Alles',...db.categories];
+  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(${JSON.stringify(c)})">${c}</div>`).join('');
+  const prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
+  document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten</div>':
+    prods.map(p=>{
+      const [bc,bl]=stockStatus(p);
+      const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
+      return `<div class="card" onclick="openProductDetail(${p.id})">
+        <div class="card-row"><span class="card-title">${p.name}</span><span class="badge ${bc}">${bl}</span></div>
+        <div class="card-sub">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
+        <div class="stock-bar-wrap"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
+      </div>`;
+    }).join('');
+}
+function filterCat(c) { activeCat=c; renderStock(); }
+
+// ====================== PROJECTS ======================
+function renderProjects() {
+  const active=db.projects.filter(p=>p.status==='actief');
+  const done=db.projects.filter(p=>p.status!=='actief');
+  let html='';
+  if(active.length) html+='<div class="section-hdr">🏗️ Actief</div>'+active.map(projCard).join('');
+  if(done.length) html+='<div class="section-hdr">✅ Afgerond</div>'+done.map(projCard).join('');
+  if(!db.projects.length) html='<div class="empty">Geen projecten</div>';
+  document.getElementById('projects-list').innerHTML=html;
+}
+function projCard(p) {
+  const lines=db.history.filter(h=>h.projectId===p.id);
+  const cost=lines.filter(h=>h.type==='out').reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0)
+            -lines.filter(h=>h.type==='in').reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0);
+  const issued=lines.filter(h=>h.type==='out').reduce((s,h)=>s+h.qty,0);
+  return `<div class="card" onclick="openProjDetail(${p.id})">
+    <div class="card-row"><span class="card-title">${p.name}</span><span class="badge badge-blue">${p.status}</span></div>
+    <div class="card-sub">${p.client} · ${p.date}</div>
+    <div class="card-sub" style="margin-top:6px">Uitgegeven: ${issued} · Kosten: <strong style="color:var(--accent)">€${cost.toFixed(2)}</strong></div>
+  </div>`;
+}
+
+// ====================== ORDERS ======================
+function renderOrders() {
+  const d=new Date();
+  document.getElementById('order-week').textContent=`${getWeek(d)}, ${d.getFullYear()}`;
+  const needed=db.products.filter(p=>p.qty<p.min);
+  const container=document.getElementById('order-by-supplier');
+  if(!needed.length) { container.innerHTML='<div class="empty">✅ Niets te bestellen</div>'; }
+  else {
+    let html='';
+    db.suppliers.forEach(s=>{
+      const items=needed.filter(p=>p.supplier===s.id);
+      if(!items.length) return;
+      const subtotal=items.reduce((sum,p)=>sum+(p.min*2-p.qty)*p.price,0);
+      html+=`<div class="sup-block">
+        <div class="sup-block-hdr">
+          <div class="sup-block-hdr-name">${s.name}</div>
+          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''} · €${subtotal.toFixed(2)}</div>
+        </div>
+        <div class="sup-block-body">
+          ${items.map(p=>{const q=p.min*2-p.qty;return `<div class="sup-row">
+            <div><div style="font-weight:500;font-size:14px">${p.name}</div>
+            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · €${p.price}/${p.unit}</div></div>
+            <div style="text-align:right"><div style="font-family:'DM Mono',monospace;font-size:15px;color:var(--accent)">${q}×</div>
+            <div class="card-sub">€${(q*p.price).toFixed(2)}</div></div>
+          </div>`;}).join('')}
+        </div>
+        <div class="sup-block-footer">
+          <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="exportSupOrder(${s.id})">📤 Exporteer</button>
+          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="waSupOrder(${s.id})">💬 WhatsApp</button>
+          <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 Bel</a>
+        </div>
+      </div>`;
+    });
+    container.innerHTML=html||'<div class="empty">✅ Niets te bestellen</div>';
+  }
+  document.getElementById('supplier-list').innerHTML=db.suppliers.map(s=>`
+    <div class="card">
+      <div class="card-row"><span class="card-title">${s.name}</span></div>
+      <div class="card-sub" style="margin-top:4px">${s.contact}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <a href="mailto:${s.email}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">✉️ ${s.email}</a>
+        <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 ${s.phone}</a>
+      </div>
+    </div>`).join('');
+}
+
+// ====================== ORDER EXPORT / WA ======================
+function buildOrderText(supId) {
+  const s=db.suppliers.find(x=>x.id===supId);
+  const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
+  if(!s||!items.length) return null;
+  const d=new Date();
+  let txt=`Bestellijst – ${s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n\n`;
+  items.forEach(p=>{const q=p.min*2-p.qty;txt+=`- ${p.name}: ${q} ${p.unit}\n`;});
+  const total=items.reduce((sum,p)=>sum+(p.min*2-p.qty)*p.price,0);
+  txt+=`\nTotaal: €${total.toFixed(2)}\n\nMet vriendelijke groet`;
+  return {s,items,txt,total,d};
+}
+function exportSupOrder(supId) {
+  const r=buildOrderText(supId);
+  if(!r) { alert('Niets te exporteren.'); return; }
+  const d=new Date();
+  let txt=`BESTELLIJST – ${r.s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n${'─'.repeat(40)}\n${r.s.contact} | ${r.s.email} | ${r.s.phone}\n\n`;
+  r.items.forEach(p=>{const q=p.min*2-p.qty;txt+=`${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
+  txt+=`\nTOTAAL: €${r.total.toFixed(2)}\n`;
+  shareOrCopy(txt,`Bestellijst ${r.s.name}`);
+}
+function exportAllOrders() {
+  const needed=db.products.filter(p=>p.qty<p.min);
+  if(!needed.length) { alert('Niets te bestellen!'); return; }
+  const d=new Date();
+  let txt=`BESTELLIJST – Week ${getWeek(d)}, ${d.getFullYear()}\n${'═'.repeat(40)}\n\n`;
+  db.suppliers.forEach(s=>{
+    const items=needed.filter(p=>p.supplier===s.id);
+    if(!items.length) return;
+    txt+=`LEVERANCIER: ${s.name}\n${s.email} | ${s.phone}\n\n`;
+    items.forEach(p=>{const q=p.min*2-p.qty;txt+=`  ${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
+    txt+='\n';
+  });
+  const total=needed.reduce((s,p)=>{const q=p.min*2-p.qty;return s+q*p.price;},0);
+  txt+=`TOTAAL: €${total.toFixed(2)}\n`;
+  shareOrCopy(txt,'Volledige bestellijst');
+}
+function waSupOrder(supId) {
+  const r=buildOrderText(supId);
+  if(!r) { alert('Geen artikelen te bestellen.'); return; }
+  let phone=r.s.phone.replace(/\s/g,'');
+  if(phone.startsWith('0')) phone='31'+phone.slice(1);
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(r.txt)}`,'_blank');
+}
+function shareOrCopy(txt,title) {
+  if(navigator.share) { navigator.share({title,text:txt}).catch(()=>showExportModal(txt,title)); return; }
+  if(navigator.clipboard&&navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(()=>showExportModal(txt,title,'✅ Gekopieerd!')).catch(()=>showExportModal(txt,title)); return;
+  }
+  showExportModal(txt,title);
+}
+function showExportModal(txt,title,topMsg) {
+  document.getElementById('export-modal-title').textContent=title||'Bestellijst';
+  document.getElementById('export-modal-msg').textContent=topMsg||'Druk op kopieer of selecteer de tekst handmatig:';
+  document.getElementById('export-textarea').value=txt;
+  openModal('modal-export');
+  setTimeout(()=>{const ta=document.getElementById('export-textarea');ta.focus();ta.select();},200);
+}
+function copyExportText() {
+  const ta=document.getElementById('export-textarea');
+  ta.select();
+  try { document.execCommand('copy'); document.getElementById('export-modal-msg').textContent='✅ Gekopieerd!'; }
+  catch(e) { document.getElementById('export-modal-msg').textContent='Selecteer de tekst en kopieer handmatig.'; }
+}
+
+// ====================== RECEIVE ======================
+function openReceiveSupModal(supId) {
+  const s=db.suppliers.find(x=>x.id===supId);
+  const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
+  if(!items.length) { alert('Geen producten te ontvangen.'); return; }
+  document.getElementById('recv-sup-title').textContent=`Ontvangen – ${s.name}`;
+  document.getElementById('recv-sup-list').innerHTML=recvRows(items);
+  openModal('modal-receive-sup');
+}
+async function confirmReceiveSup() {
+  await applyReceive('#recv-sup-list'); closeModal('modal-receive-sup');
+}
+function openReceiveAllModal() {
+  const items=db.products.filter(p=>p.qty<p.min);
+  if(!items.length) { alert('Geen producten te ontvangen.'); return; }
+  document.getElementById('recv-all-list').innerHTML=recvRows(items,true);
+  openModal('modal-receive-all');
+}
+async function confirmReceiveAll() {
+  await applyReceive('#recv-all-list'); closeModal('modal-receive-all');
+}
+function recvRows(items,showSupplier=false) {
+  return items.map(p=>{
+    const suggest=p.min*2-p.qty;
+    return `<div class="recv-row">
+      <div><div style="font-weight:500;font-size:14px">${p.name}</div>
+      <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}Nu: ${p.qty} ${p.unit} · Min: ${p.min}</div></div>
+      <div class="stepper">
+        <button onclick="this.nextElementSibling.value=Math.max(0,parseInt(this.nextElementSibling.value||0)-1)">−</button>
+        <input type="number" class="recv-qty" data-id="${p.id}" value="${suggest}" min="0" style="width:55px;text-align:center">
+        <button onclick="this.previousElementSibling.value=parseInt(this.previousElementSibling.value||0)+1">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function applyReceive(scope) {
+  setSyncing('syncing');
+  const rows=document.querySelectorAll(scope+' .recv-qty');
+  for(const inp of rows) {
+    const id=parseInt(inp.dataset.id), qty=parseInt(inp.value)||0;
+    if(qty<=0) continue;
+    const p=db.products.find(x=>x.id===id); if(!p) continue;
+    await dbPatch('products', `id=eq.${id}`, {qty: p.qty+qty});
+    await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today()});
+  }
+  await loadAll();
+}
+
+// ====================== PRODUCT CRUD ======================
+function openProductModal(editId=null) {
+  fillCatSelect('p-cat'); fillSupplierSelect('p-supplier');
+  document.getElementById('p-id').value=editId||'';
+  document.getElementById('product-modal-title').textContent=editId?'Product bewerken':'Product toevoegen';
+  document.getElementById('p-delete-btn').style.display=editId?'flex':'none';
+  if(editId) {
+    const p=db.products.find(x=>x.id===editId); if(!p) return;
+    document.getElementById('p-name').value=p.name;
+    document.getElementById('p-barcode').value=p.barcode||'';
+    document.getElementById('p-cat').value=p.cat;
+    document.getElementById('p-unit').value=p.unit;
+    document.getElementById('p-qty').value=p.qty;
+    document.getElementById('p-min').value=p.min;
+    document.getElementById('p-price').value=p.price;
+    document.getElementById('p-supplier').value=p.supplier;
+  } else {
+    ['p-name','p-barcode','p-qty','p-min','p-price'].forEach(id=>document.getElementById(id).value='');
+  }
+  openModal('modal-product');
+}
+async function saveProduct() {
+  const name=document.getElementById('p-name').value.trim();
+  if(!name) { alert('Vul een naam in.'); return; }
+  const editId=parseInt(document.getElementById('p-id').value)||null;
+  const data={
+    name, cat:document.getElementById('p-cat').value,
+    unit:document.getElementById('p-unit').value,
+    qty:parseFloat(document.getElementById('p-qty').value)||0,
+    min:parseFloat(document.getElementById('p-min').value)||0,
+    price:parseFloat(document.getElementById('p-price').value)||0,
+    supplier_id:parseInt(document.getElementById('p-supplier').value)||null,
+    barcode:document.getElementById('p-barcode').value.trim()||null
+  };
+  setSyncing('syncing');
+  if(editId) await dbPatch('products', `id=eq.${editId}`, data);
+  else await dbPost('products', data);
+  closeModal('modal-product');
+  await loadAll();
+}
+async function deleteProduct() {
+  const editId=parseInt(document.getElementById('p-id').value)||null; if(!editId) return;
+  const p=db.products.find(x=>x.id===editId);
+  if(p&&confirm(`Product "${p.name}" verwijderen?`)) {
+    setSyncing('syncing');
+    await dbDelete('products', `id=eq.${editId}`);
+    closeModal('modal-product'); await loadAll();
+  }
+}
+
+// ====================== PROJECT CRUD ======================
+async function saveProject() {
+  const name=document.getElementById('pr-name').value.trim(); if(!name) return;
+  setSyncing('syncing');
+  await dbPost('projects', {name,client:document.getElementById('pr-client').value,date:document.getElementById('pr-date').value||today(),status:'actief'});
+  closeModal('modal-project');
+  ['pr-name','pr-client'].forEach(id=>document.getElementById(id).value='');
+  await loadAll();
+}
+async function closeProject(id) {
+  const p=db.projects.find(x=>x.id===id);
+  if(p&&confirm(`Project "${p.name}" afronden?`)) {
+    setSyncing('syncing');
+    await dbPatch('projects', `id=eq.${id}`, {status:'afgerond'});
+    closeModal('modal-detail'); await loadAll();
+  }
+}
+
+// ====================== SUPPLIER CRUD ======================
+async function saveSupplier() {
+  const name=document.getElementById('sup-name').value.trim(); if(!name) return;
+  setSyncing('syncing');
+  await dbPost('suppliers', {name,contact:document.getElementById('sup-contact').value,email:document.getElementById('sup-email').value,phone:document.getElementById('sup-phone').value});
+  closeModal('modal-supplier');
+  ['sup-name','sup-contact','sup-email','sup-phone'].forEach(id=>document.getElementById(id).value='');
+  await loadAll();
+}
+
+// ====================== ISSUE ======================
+let issueMode='out';
+function openIssueModal(mode) {
+  issueMode=mode;
+  document.getElementById('issue-title-text').textContent=mode==='out'?'Materiaal uitgeven':'Materiaal retourneren';
+  document.getElementById('issue-confirm-btn').textContent=mode==='out'?'Uitgeven':'Retourneren';
+  document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
+  document.getElementById('issue-project').innerHTML=db.projects.filter(p=>p.status==='actief').map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('issue-qty').value=1;
+  document.getElementById('issue-note').value='';
+  openModal('modal-issue');
+}
+async function confirmIssue() {
+  const prodId=parseInt(document.getElementById('issue-product').value);
+  const qty=parseInt(document.getElementById('issue-qty').value)||1;
+  const projId=parseInt(document.getElementById('issue-project').value)||null;
+  const note=document.getElementById('issue-note').value;
+  const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
+  if(issueMode==='out'&&prod.qty<qty) { alert('Onvoldoende voorraad!'); return; }
+  const newQty=prod.qty+(issueMode==='out'?-qty:qty);
+  setSyncing('syncing');
+  await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
+  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today()});
+  closeModal('modal-issue'); await loadAll();
+}
+
+// ====================== DETAIL MODALS ======================
+function openProductDetail(id) {
+  const p=db.products.find(x=>x.id===id); if(!p) return;
+  const hist=db.history.filter(h=>h.productId===id).slice(0,10);
+  const sup=db.suppliers.find(s=>s.id===p.supplier);
+  document.getElementById('detail-title').textContent=p.name;
+  document.getElementById('detail-content').innerHTML=`
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-card"><div class="stat-val">${p.qty}</div><div class="stat-lbl">${p.unit} in voorraad</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">€${(p.qty*p.price).toFixed(0)}</div><div class="stat-lbl">Waarde</div></div>
+    </div>
+    <div class="card-sub" style="margin-bottom:6px">Categorie: ${p.cat} · Min: ${p.min} ${p.unit} · €${p.price}/${p.unit}</div>
+    ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-detail');openProductModal(${p.id})">✏️ Bewerken</button>
+      <button class="btn btn-danger" onclick="closeModal('modal-detail');openIssueModal('out')">▼ Uitg.</button>
+      <button class="btn btn-green" onclick="closeModal('modal-detail');openIssueModal('in')">▲ Retour</button>
+    </div>
+    <div class="section-hdr">Geschiedenis</div>
+    ${hist.length?hist.map(h=>{
+      const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':'📦 Ontvangen';
+      return `<div class="hist-item"><div class="hist-dot ${h.type}"></div>
+        <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}</div>
+        <div class="hist-date">${h.date}${h.note?' · '+h.note:''}</div></div></div>`;
+    }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}`;
+  openModal('modal-detail');
+}
+function openProjDetail(id) {
+  const p=db.projects.find(x=>x.id===id); if(!p) return;
+  const lines=db.history.filter(h=>h.projectId===id);
+  const out=lines.filter(h=>h.type==='out'), ret=lines.filter(h=>h.type==='in');
+  const cost=out.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0)
+            -ret.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0);
+  document.getElementById('detail-title').textContent=p.name;
+  document.getElementById('detail-content').innerHTML=`
+    <div class="card-sub" style="margin-bottom:12px">${p.client} · ${p.date} · <span class="badge badge-blue">${p.status}</span></div>
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-card"><div class="stat-val">${out.reduce((s,h)=>s+h.qty,0)}</div><div class="stat-lbl">Items uitgegeven</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px;color:var(--accent)">€${cost.toFixed(2)}</div><div class="stat-lbl">Materiaalkosten</div></div>
+    </div>
+    ${p.status==='actief'?`<button class="btn btn-green btn-full" style="margin-bottom:12px" onclick="closeProject(${p.id})">✅ Project afronden</button>`:''}
+    <div class="section-hdr">Materiaalverbruik</div>
+    ${lines.length?lines.map(h=>{
+      const pr=db.products.find(x=>x.id===h.productId);
+      return `<div class="proj-item">
+        <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${h.date} · ${h.type==='out'?'Uitgegeven':'Retour'}</div></div>
+        <div style="text-align:right;font-family:'DM Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
+          ${h.type==='out'?'-':'+'}${h.qty} ${pr?pr.unit:''}</div>
+      </div>`;
+    }).join(''):'<div class="empty" style="padding:16px 0">Geen materiaal geboekt</div>'}`;
+  openModal('modal-detail');
+}
+
+// ====================== CATEGORIES ======================
+function renderSettings() {
+  document.getElementById('cat-list').innerHTML=db.categories.length===0?'<div class="empty" style="padding:10px 0">Geen categorieën</div>':
+    db.categories.map(c=>`<div class="cat-tag">
+      <span class="cat-name">${c}</span>
+      <button class="cat-del" onclick="deleteCategory(${JSON.stringify(c)})">×</button>
+    </div>`).join('');
+}
+async function addCategory() {
+  const val=document.getElementById('new-cat-input').value.trim(); if(!val) return;
+  if(db.categories.includes(val)) { alert('Bestaat al.'); return; }
+  setSyncing('syncing');
+  await dbPost('categories', {name:val});
+  document.getElementById('new-cat-input').value='';
+  await loadAll(); renderSettings();
+}
+async function deleteCategory(name) {
+  const inUse=db.products.some(p=>p.cat===name);
+  if(inUse&&!confirm(`Categorie "${name}" is in gebruik. Toch verwijderen?`)) return;
+  setSyncing('syncing');
+  await dbDelete('categories', `name=eq.${encodeURIComponent(name)}`);
+  await loadAll(); renderSettings();
+}
+
+// ====================== BARCODE SCANNER ======================
+let scanTarget=null, codeReader=null;
+function startScan(target) {
+  scanTarget=target;
+  document.getElementById('scan-status').textContent='Richt de camera op een barcode…';
+  openModal('modal-scanner');
+  if(typeof ZXing==='undefined') {
+    document.getElementById('scan-status').textContent='⏳ Scanner laden…';
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+    s.onload=()=>initScanner();
+    s.onerror=()=>{document.getElementById('scan-status').textContent='❌ Scanner kon niet laden.';};
+    document.head.appendChild(s);
+  } else { initScanner(); }
+}
+function initScanner() {
+  try {
+    codeReader=new ZXing.BrowserMultiFormatReader();
+    codeReader.decodeFromConstraints({video:{facingMode:'environment'}},'scan-video',(result)=>{
+      if(result) handleScanResult(result.getText());
+    });
+  } catch(e) { document.getElementById('scan-status').textContent='❌ Camera niet beschikbaar.'; }
+}
+function handleScanResult(code) {
+  stopScan();
+  if(scanTarget==='product') {
+    document.getElementById('p-barcode').value=code;
+  } else if(scanTarget==='issue') {
+    const prod=db.products.find(p=>p.barcode===code);
+    if(prod) {
+      document.getElementById('issue-product').value=prod.id;
+      document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${prod.name}`;
+    } else { alert(`Barcode "${code}" niet gevonden. Voeg het product eerst toe met deze barcode.`); }
+  }
+}
+function stopScan() {
+  if(codeReader){codeReader.reset();codeReader=null;}
+  const vid=document.getElementById('scan-video');
+  if(vid&&vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null;}
+  closeModal('modal-scanner');
+}
+
+// ====================== EXPORT DATA ======================
+function exportData() {
+  shareOrCopy(JSON.stringify(db,null,2),'Voorraad data export');
+}
+
+// ====================== INIT ======================
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
+});
+
+loadAll();
+setupRealtime();
+</script>
+</body>
+</html>
