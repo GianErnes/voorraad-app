@@ -363,7 +363,7 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,price:Number(r.price)||0,supplier:r.supplier_id,barcode:r.barcode||null}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
     setSyncing('ok');
