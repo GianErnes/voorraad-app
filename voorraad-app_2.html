@@ -228,14 +228,16 @@
 <div class="modal-overlay" id="modal-issue">
   <div class="modal">
     <div class="modal-title"><span id="issue-title-text">Materiaal uitgeven</span><span class="modal-close" onclick="closeModal('modal-issue')">×</span></div>
-    <div class="form-group">
+    <div class="form-group"><label>PROJECT</label>
+      <select id="issue-project" onchange="onIssueProjectChange()"></select>
+    </div>
+    <div class="form-group" id="issue-product-group">
       <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
       <label>PRODUCT</label><select id="issue-product"></select>
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper"><button onclick="stepVal('issue-qty',-1)">−</button><input id="issue-qty" type="number" value="1" min="1"><button onclick="stepVal('issue-qty',1)">+</button></div>
     </div>
-    <div class="form-group"><label>PROJECT</label><select id="issue-project"></select></div>
     <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
     <button class="btn btn-primary btn-full" id="issue-confirm-btn" onclick="confirmIssue()">Bevestigen</button>
   </div>
@@ -778,11 +780,47 @@ function openIssueModal(mode) {
   issueMode=mode;
   document.getElementById('issue-title-text').textContent=mode==='out'?'Materiaal uitgeven':'Materiaal retourneren';
   document.getElementById('issue-confirm-btn').textContent=mode==='out'?'Uitgeven':'Retourneren';
-  document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
-  document.getElementById('issue-project').innerHTML=db.projects.filter(p=>p.status==='actief').map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+
+  // Project dropdown - bij retour ook afgeronde projecten tonen
+  const projects = mode==='out'
+    ? db.projects.filter(p=>p.status==='actief')
+    : db.projects;
+  document.getElementById('issue-project').innerHTML=
+    `<option value="">— Geen project —</option>`+
+    projects.map(p=>`<option value="${p.id}">${p.name} (${p.status})</option>`).join('');
+
+  // Bij uitgeven: alle producten tonen
+  // Bij retourneren: eerst project kiezen, dan filteren
+  if(mode==='out') {
+    document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
+  } else {
+    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
+  }
+
   document.getElementById('issue-qty').value=1;
   document.getElementById('issue-note').value='';
   openModal('modal-issue');
+}
+
+function onIssueProjectChange() {
+  if(issueMode!=='in') return;
+  const projId=parseInt(document.getElementById('issue-project').value)||null;
+  if(!projId) {
+    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
+    return;
+  }
+  // Haal producten op die op dit project geboekt zijn
+  const projectLines=db.history.filter(h=>h.projectId===projId&&h.type==='out');
+  const productIds=[...new Set(projectLines.map(h=>h.productId))];
+  if(!productIds.length) {
+    document.getElementById('issue-product').innerHTML='<option>Geen materiaal geboekt op dit project</option>';
+    return;
+  }
+  const projectProducts=db.products.filter(p=>productIds.includes(p.id));
+  document.getElementById('issue-product').innerHTML=projectProducts.map(p=>{
+    const uitgegeven=projectLines.filter(h=>h.productId===p.id).reduce((s,h)=>s+h.qty,0);
+    return `<option value="${p.id}">${p.name} (${uitgegeven} uitgegeven)</option>`;
+  }).join('');
 }
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
