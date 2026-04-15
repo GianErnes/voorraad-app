@@ -127,6 +127,12 @@
     <div id="recent-activity"></div>
   </div>
   <div class="page" id="page-stock">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1;position:relative">
+        <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px">
+      </div>
+      <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
+    </div>
     <div class="chip-row" id="cat-filters"></div>
     <div id="stock-list"></div>
   </div>
@@ -457,19 +463,38 @@ let activeCat='Alles';
 function renderStock() {
   const cats=['Alles',...db.categories];
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.replace(/"/g,'&quot;')}">${c}</div>`).join('');
-  const prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
-  document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten</div>':
+  const search=(document.getElementById('stock-search')||{}).value||'';
+  let prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
+  if(search.trim()) prods=prods.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
+  document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
       const [bc,bl]=stockStatus(p);
       const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
-      return `<div class="card" onclick="openProductDetail(${p.id})">
-        <div class="card-row"><span class="card-title">${p.name}</span><span class="badge ${bc}">${bl}</span></div>
-        <div class="card-sub">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
-        <div class="stock-bar-wrap"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
+      return `<div class="card">
+        <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
+          <span class="card-title">${p.name}</span>
+          <span class="badge ${bc}">${bl}</span>
+        </div>
+        <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <button onclick="quickQty(${p.id},-1)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
+          <div style="font-family:'DM Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
+          <button onclick="quickQty(${p.id},1)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>
+          <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
+        </div>
       </div>`;
     }).join('');
 }
 function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
+
+async function quickQty(id, delta) {
+  const p=db.products.find(x=>x.id===id); if(!p) return;
+  const newQty=Math.max(0, p.qty+delta);
+  p.qty=newQty;
+  renderStock();
+  await dbPatch('products', `id=eq.${id}`, {qty:newQty});
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today()});
+}
 
 // ====================== PROJECTS ======================
 function renderProjects() {
@@ -654,6 +679,22 @@ async function applyReceive(scope) {
 }
 
 // ====================== PRODUCT CRUD ======================
+async function duplicateProduct(id) {
+  const p=db.products.find(x=>x.id===id); if(!p) return;
+  const newName=prompt('Naam voor het nieuwe product:', p.name+' (kopie)');
+  if(!newName) return;
+  setSyncing('syncing');
+  await dbPost('products', {
+    name:newName, cat:p.cat, unit:p.unit,
+    qty:0, min:p.min, price:p.price,
+    supplier_id:p.supplier, barcode:null
+  });
+  await loadAll();
+  // Open het nieuwe product direct om aan te passen
+  const newProd=db.products.find(x=>x.name===newName);
+  if(newProd) openProductModal(newProd.id);
+}
+
 function openProductModal(editId=null) {
   fillCatSelect('p-cat'); fillSupplierSelect('p-supplier');
   document.getElementById('p-id').value=editId||'';
@@ -772,6 +813,7 @@ function openProductDetail(id) {
     ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-detail');openProductModal(${p.id})">✏️ Bewerken</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-detail');duplicateProduct(${p.id})">⧉ Dupliceer</button>
       <button class="btn btn-danger" onclick="closeModal('modal-detail');openIssueModal('out')">▼ Uitg.</button>
       <button class="btn btn-green" onclick="closeModal('modal-detail');openIssueModal('in')">▲ Retour</button>
     </div>
@@ -864,6 +906,14 @@ function handleScanResult(code) {
   stopScan();
   if(scanTarget==='product') {
     document.getElementById('p-barcode').value=code;
+  } else if(scanTarget==='stock') {
+    const prod=db.products.find(p=>p.barcode===code);
+    if(prod) {
+      document.getElementById('stock-search').value=prod.name;
+      renderStock();
+    } else {
+      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+    }
   } else if(scanTarget==='issue') {
     const prod=db.products.find(p=>p.barcode===code);
     if(prod) {
