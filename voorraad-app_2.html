@@ -150,11 +150,6 @@
     <div id="supplier-list"></div>
   </div>
   <div class="page" id="page-settings">
-    <div class="section-hdr">Data back-up</div>
-    <div class="card">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Data wordt automatisch gesynchroniseerd via de cloud. Maak regelmatig een back-up.</p>
-      <button class="btn btn-secondary btn-full" onclick="exportData()" style="margin-top:0">💾 Exporteer back-up (JSON)</button>
-    </div>
     <div class="section-hdr">Categorieën beheren</div>
     <div class="card">
       <div id="cat-list"></div>
@@ -162,6 +157,11 @@
         <input id="new-cat-input" placeholder="Nieuwe categorie…" style="flex:1">
         <button class="btn btn-primary" onclick="addCategory()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
+    </div>
+    <div class="section-hdr">Data</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Data wordt automatisch gesynchroniseerd via de cloud.</p>
+      <button class="btn btn-secondary btn-full" onclick="exportData()">💾 Exporteer back-up (JSON)</button>
     </div>
   </div>
 </div>
@@ -228,16 +228,14 @@
 <div class="modal-overlay" id="modal-issue">
   <div class="modal">
     <div class="modal-title"><span id="issue-title-text">Materiaal uitgeven</span><span class="modal-close" onclick="closeModal('modal-issue')">×</span></div>
-    <div class="form-group"><label>PROJECT</label>
-      <select id="issue-project" onchange="onIssueProjectChange()"></select>
-    </div>
-    <div class="form-group" id="issue-product-group">
+    <div class="form-group">
       <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
       <label>PRODUCT</label><select id="issue-product"></select>
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper"><button onclick="stepVal('issue-qty',-1)">−</button><input id="issue-qty" type="number" value="1" min="1"><button onclick="stepVal('issue-qty',1)">+</button></div>
     </div>
+    <div class="form-group"><label>PROJECT</label><select id="issue-project"></select></div>
     <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
     <button class="btn btn-primary btn-full" id="issue-confirm-btn" onclick="confirmIssue()">Bevestigen</button>
   </div>
@@ -780,47 +778,11 @@ function openIssueModal(mode) {
   issueMode=mode;
   document.getElementById('issue-title-text').textContent=mode==='out'?'Materiaal uitgeven':'Materiaal retourneren';
   document.getElementById('issue-confirm-btn').textContent=mode==='out'?'Uitgeven':'Retourneren';
-
-  // Project dropdown - bij retour ook afgeronde projecten tonen
-  const projects = mode==='out'
-    ? db.projects.filter(p=>p.status==='actief')
-    : db.projects;
-  document.getElementById('issue-project').innerHTML=
-    `<option value="">— Geen project —</option>`+
-    projects.map(p=>`<option value="${p.id}">${p.name} (${p.status})</option>`).join('');
-
-  // Bij uitgeven: alle producten tonen
-  // Bij retourneren: eerst project kiezen, dan filteren
-  if(mode==='out') {
-    document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
-  } else {
-    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
-  }
-
+  document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
+  document.getElementById('issue-project').innerHTML=db.projects.filter(p=>p.status==='actief').map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   document.getElementById('issue-qty').value=1;
   document.getElementById('issue-note').value='';
   openModal('modal-issue');
-}
-
-function onIssueProjectChange() {
-  if(issueMode!=='in') return;
-  const projId=parseInt(document.getElementById('issue-project').value)||null;
-  if(!projId) {
-    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
-    return;
-  }
-  // Haal producten op die op dit project geboekt zijn
-  const projectLines=db.history.filter(h=>h.projectId===projId&&h.type==='out');
-  const productIds=[...new Set(projectLines.map(h=>h.productId))];
-  if(!productIds.length) {
-    document.getElementById('issue-product').innerHTML='<option>Geen materiaal geboekt op dit project</option>';
-    return;
-  }
-  const projectProducts=db.products.filter(p=>productIds.includes(p.id));
-  document.getElementById('issue-product').innerHTML=projectProducts.map(p=>{
-    const uitgegeven=projectLines.filter(h=>h.productId===p.id).reduce((s,h)=>s+h.qty,0);
-    return `<option value="${p.id}">${p.name} (${uitgegeven} uitgegeven)</option>`;
-  }).join('');
 }
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
@@ -878,13 +840,7 @@ function openProjDetail(id) {
       <div class="stat-card"><div class="stat-val">${out.reduce((s,h)=>s+h.qty,0)}</div><div class="stat-lbl">Items uitgegeven</div></div>
       <div class="stat-card"><div class="stat-val" style="font-size:20px;color:var(--accent)">€${cost.toFixed(2)}</div><div class="stat-lbl">Materiaalkosten</div></div>
     </div>
-    <div class="btn-row" style="margin-bottom:12px">
-      ${p.status==='actief'
-        ? `<button class="btn btn-green" style="flex:1;justify-content:center" onclick="closeProject(${p.id})">✅ Afronden</button>`
-        : `<button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="reopenProject(${p.id})">🔄 Heropenen</button>`
-      }
-      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProject(${p.id})">📤 Exporteer</button>
-    </div>
+    ${p.status==='actief'?`<button class="btn btn-green btn-full" style="margin-bottom:12px" onclick="closeProject(${p.id})">✅ Project afronden</button>`:''}
     <div class="section-hdr">Materiaalverbruik</div>
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
@@ -895,49 +851,6 @@ function openProjDetail(id) {
       </div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen materiaal geboekt</div>'}`;
   openModal('modal-detail');
-}
-
-async function reopenProject(id) {
-  const p=db.projects.find(x=>x.id===id);
-  if(p&&confirm(`Project "${p.name}" heropenen?`)) {
-    setSyncing('syncing');
-    await dbPatch('projects', `id=eq.${id}`, {status:'actief'});
-    closeModal('modal-detail'); await loadAll();
-  }
-}
-
-function exportProject(id) {
-  const p=db.projects.find(x=>x.id===id); if(!p) return;
-  const lines=db.history.filter(h=>h.projectId===id);
-  const out=lines.filter(h=>h.type==='out'), ret=lines.filter(h=>h.type==='in');
-  const cost=out.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0)
-            -ret.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0);
-
-  let txt=`MATERIAALLIJST – ${p.name}\n`;
-  txt+=`Klant: ${p.client}\nDatum: ${p.date}\nStatus: ${p.status}\n`;
-  txt+='─'.repeat(40)+'\n\n';
-
-  // Groepeer per product
-  const grouped={};
-  lines.forEach(h=>{
-    const pr=db.products.find(x=>x.id===h.productId);
-    const naam=pr?pr.name:'Onbekend';
-    const prijs=pr?pr.price:0;
-    const unit=pr?pr.unit:'stuk';
-    if(!grouped[naam]) grouped[naam]={qty:0,unit,prijs};
-    grouped[naam].qty += h.type==='out'?h.qty:-h.qty;
-  });
-
-  Object.entries(grouped).forEach(([naam,{qty,unit,prijs}])=>{
-    if(qty<=0) return;
-    const subtotal=(qty*prijs).toFixed(2);
-    txt+=`${naam.padEnd(35)} ${String(qty).padStart(4)} ${unit.padEnd(6)} €${subtotal}\n`;
-  });
-
-  txt+='\n'+'─'.repeat(40)+'\n';
-  txt+=`TOTAAL MATERIAALKOSTEN: €${cost.toFixed(2)}\n`;
-
-  shareOrCopy(txt, `Materiaallijst ${p.name}`);
 }
 
 // ====================== CATEGORIES ======================
