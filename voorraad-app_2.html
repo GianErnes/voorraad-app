@@ -150,6 +150,11 @@
     <div id="supplier-list"></div>
   </div>
   <div class="page" id="page-settings">
+    <div class="section-hdr">Data back-up</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Data wordt automatisch gesynchroniseerd via de cloud. Maak regelmatig een back-up.</p>
+      <button class="btn btn-secondary btn-full" onclick="exportData()" style="margin-top:0">💾 Exporteer back-up (JSON)</button>
+    </div>
     <div class="section-hdr">Categorieën beheren</div>
     <div class="card">
       <div id="cat-list"></div>
@@ -157,11 +162,6 @@
         <input id="new-cat-input" placeholder="Nieuwe categorie…" style="flex:1">
         <button class="btn btn-primary" onclick="addCategory()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
-    </div>
-    <div class="section-hdr">Data</div>
-    <div class="card">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Data wordt automatisch gesynchroniseerd via de cloud.</p>
-      <button class="btn btn-secondary btn-full" onclick="exportData()">💾 Exporteer back-up (JSON)</button>
     </div>
   </div>
 </div>
