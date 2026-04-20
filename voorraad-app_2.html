@@ -133,11 +133,10 @@
     <button class="pin-btn" onclick="pinInput('7')">7</button>
     <button class="pin-btn" onclick="pinInput('8')">8</button>
     <button class="pin-btn" onclick="pinInput('9')">9</button>
-    <button class="pin-btn" onclick="pinBiometric()" style="font-size:22px">􀎽</button>
+    <div></div>
     <button class="pin-btn" onclick="pinInput('0')">0</button>
     <button class="pin-btn" onclick="pinDelete()" style="font-size:18px">⌫</button>
   </div>
-  <button onclick="pinBiometric()" style="margin-top:8px;background:none;border:none;color:var(--accent2);font-size:13px;cursor:pointer">🔓 Face ID / Touch ID</button>
 </div>
 
 <!-- LOADING SCREEN -->
@@ -353,13 +352,9 @@ const SESSION_KEY = 'ernes_unlocked';
 let pinEntry = '';
 
 function initSecurity() {
-  // Check of al unlocked in deze sessie
   if(sessionStorage.getItem(SESSION_KEY) === 'yes') {
     document.getElementById('pin-screen').style.display='none';
-    return;
   }
-  // Probeer eerst Face ID / Touch ID
-  pinBiometric();
 }
 
 function pinInput(digit) {
@@ -396,36 +391,6 @@ function checkPin() {
     dots.style.animation='shake .3s';
     setTimeout(()=>dots.style.animation='',300);
   }
-}
-
-async function pinBiometric() {
-  if(!window.PublicKeyCredential) return; // Niet ondersteund
-  try {
-    // Gebruik WebAuthn voor Face ID / Touch ID
-    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-    if(!available) return;
-
-    // Als al geregistreerd, probeer direct in te loggen
-    const stored = localStorage.getItem('ernes_cred_id');
-    if(stored) {
-      try {
-        await navigator.credentials.get({
-          publicKey: {
-            challenge: new Uint8Array(32),
-            allowCredentials: [{
-              id: Uint8Array.from(atob(stored), c=>c.charCodeAt(0)),
-              type: 'public-key'
-            }],
-            userVerification: 'required',
-            timeout: 30000
-          }
-        });
-        sessionStorage.setItem(SESSION_KEY,'yes');
-        document.getElementById('pin-screen').style.display='none';
-        return;
-      } catch(e) { /* gebruiker annuleerde of mislukt, val terug op pin */ }
-    }
-  } catch(e) { /* WebAuthn niet beschikbaar */ }
 }
 
 // Voeg shake animatie toe
