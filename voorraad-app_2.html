@@ -103,9 +103,42 @@
   .recv-row:last-child{border-bottom:none;}
   .btn-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
   .btn-row .btn{flex:1;justify-content:center;min-width:80px;}
+  .pin-btn { width:72px;height:72px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:24px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s; }
+  .pin-btn:active { background:var(--surface2); }
+  .pin-dot { width:14px;height:14px;border-radius:50%;background:var(--border);transition:background .2s; }
+  .pin-dot.filled { background:var(--accent); }
 </style>
 </head>
 <body>
+
+<!-- PINCODE SCHERM -->
+<div id="pin-screen" style="position:fixed;inset:0;background:var(--bg);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+  <div style="font-size:36px">🎨</div>
+  <div style="font-size:22px;font-weight:600;color:var(--text)">Ernes Schilders</div>
+  <div style="font-size:13px;color:var(--muted)">Voorraad App</div>
+  <div style="display:flex;gap:12px;margin:10px 0" id="pin-dots">
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+  </div>
+  <div id="pin-error" style="font-size:13px;color:var(--red);height:18px;"></div>
+  <div style="display:grid;grid-template-columns:repeat(3,72px);gap:12px">
+    <button class="pin-btn" onclick="pinInput('1')">1</button>
+    <button class="pin-btn" onclick="pinInput('2')">2</button>
+    <button class="pin-btn" onclick="pinInput('3')">3</button>
+    <button class="pin-btn" onclick="pinInput('4')">4</button>
+    <button class="pin-btn" onclick="pinInput('5')">5</button>
+    <button class="pin-btn" onclick="pinInput('6')">6</button>
+    <button class="pin-btn" onclick="pinInput('7')">7</button>
+    <button class="pin-btn" onclick="pinInput('8')">8</button>
+    <button class="pin-btn" onclick="pinInput('9')">9</button>
+    <button class="pin-btn" onclick="pinBiometric()" style="font-size:22px">􀎽</button>
+    <button class="pin-btn" onclick="pinInput('0')">0</button>
+    <button class="pin-btn" onclick="pinDelete()" style="font-size:18px">⌫</button>
+  </div>
+  <button onclick="pinBiometric()" style="margin-top:8px;background:none;border:none;color:var(--accent2);font-size:13px;cursor:pointer">🔓 Face ID / Touch ID</button>
+</div>
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
@@ -119,14 +152,14 @@
 </div>
 
 <div class="content">
-  <div class="page active" id="page-dashboard">
+  <div class="page active" id="page-dashboard" style="padding-bottom:120px">
     <div class="stat-grid" id="stat-grid"></div>
     <div class="section-hdr">⚠️ Laag op voorraad</div>
     <div id="low-stock-list"></div>
     <div class="section-hdr">📋 Recente activiteit</div>
     <div id="recent-activity"></div>
   </div>
-  <div class="page" id="page-stock">
+  <div class="page" id="page-stock" style="padding-bottom:120px">
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1;position:relative">
         <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px">
@@ -136,10 +169,10 @@
     <div class="chip-row" id="cat-filters"></div>
     <div id="stock-list"></div>
   </div>
-  <div class="page" id="page-projects">
+  <div class="page" id="page-projects" style="padding-bottom:120px">
     <div id="projects-list"></div>
   </div>
-  <div class="page" id="page-orders">
+  <div class="page" id="page-orders" style="padding-bottom:120px">
     <div class="action-bar">
       <button class="btn btn-secondary" onclick="exportAllOrders()">📤 Exporteer alles</button>
       <button class="btn btn-primary" onclick="openReceiveAllModal()">📦 Alles ontvangen</button>
@@ -314,7 +347,93 @@
 
 <script>
 // ====================== SUPABASE ======================
-// ====================== SUPABASE DIRECT FETCH (geen library) ======================
+// ====================== PINCODE BEVEILIGING ======================
+const CORRECT_PIN = '2025'; // ← Verander dit naar jullie eigen pincode
+const SESSION_KEY = 'ernes_unlocked';
+let pinEntry = '';
+
+function initSecurity() {
+  // Check of al unlocked in deze sessie
+  if(sessionStorage.getItem(SESSION_KEY) === 'yes') {
+    document.getElementById('pin-screen').style.display='none';
+    return;
+  }
+  // Probeer eerst Face ID / Touch ID
+  pinBiometric();
+}
+
+function pinInput(digit) {
+  if(pinEntry.length >= 4) return;
+  pinEntry += digit;
+  updatePinDots();
+  if(pinEntry.length === 4) {
+    setTimeout(checkPin, 150);
+  }
+}
+
+function pinDelete() {
+  pinEntry = pinEntry.slice(0,-1);
+  updatePinDots();
+  document.getElementById('pin-error').textContent='';
+}
+
+function updatePinDots() {
+  document.querySelectorAll('.pin-dot').forEach((dot,i)=>{
+    dot.classList.toggle('filled', i < pinEntry.length);
+  });
+}
+
+function checkPin() {
+  if(pinEntry === CORRECT_PIN) {
+    sessionStorage.setItem(SESSION_KEY,'yes');
+    document.getElementById('pin-screen').style.display='none';
+  } else {
+    document.getElementById('pin-error').textContent='Onjuiste pincode, probeer opnieuw';
+    pinEntry='';
+    updatePinDots();
+    // Schud animatie
+    const dots=document.getElementById('pin-dots');
+    dots.style.animation='shake .3s';
+    setTimeout(()=>dots.style.animation='',300);
+  }
+}
+
+async function pinBiometric() {
+  if(!window.PublicKeyCredential) return; // Niet ondersteund
+  try {
+    // Gebruik WebAuthn voor Face ID / Touch ID
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if(!available) return;
+
+    // Als al geregistreerd, probeer direct in te loggen
+    const stored = localStorage.getItem('ernes_cred_id');
+    if(stored) {
+      try {
+        await navigator.credentials.get({
+          publicKey: {
+            challenge: new Uint8Array(32),
+            allowCredentials: [{
+              id: Uint8Array.from(atob(stored), c=>c.charCodeAt(0)),
+              type: 'public-key'
+            }],
+            userVerification: 'required',
+            timeout: 30000
+          }
+        });
+        sessionStorage.setItem(SESSION_KEY,'yes');
+        document.getElementById('pin-screen').style.display='none';
+        return;
+      } catch(e) { /* gebruiker annuleerde of mislukt, val terug op pin */ }
+    }
+  } catch(e) { /* WebAuthn niet beschikbaar */ }
+}
+
+// Voeg shake animatie toe
+const shakeStyle = document.createElement('style');
+shakeStyle.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}';
+document.head.appendChild(shakeStyle);
+
+// ====================== SUPABASE DIRECT FETCH ======================
 const SUPA_URL = 'https://rcwlbcfuvfprnnkypbba.supabase.co';
 const SUPA_KEY = 'sb_publishable_1z1Igz3u6xBMvDFxpHiQmA_KJlhzbwW';
 
@@ -1026,6 +1145,7 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
 });
 
+initSecurity();
 loadAll();
 setupRealtime();
 </script>
