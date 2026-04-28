@@ -161,7 +161,8 @@
   <div class="page" id="page-stock" style="padding-bottom:120px">
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1;position:relative">
-        <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px">
+        <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px;padding-right:36px">
+        <button onclick="clearSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
       </div>
       <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
@@ -563,9 +564,9 @@ function renderStock() {
         </div>
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-          <button onclick="quickQty(${p.id},-1)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
+          <button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
           <div style="font-family:'DM Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
-          <button onclick="quickQty(${p.id},1)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>
+          <button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>
           <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
         </div>
       </div>`;
@@ -573,9 +574,14 @@ function renderStock() {
 }
 function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
 
+function clearSearch() {
+  document.getElementById('stock-search').value='';
+  renderStock();
+}
+
 async function quickQty(id, delta) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
-  const newQty=Math.max(0, p.qty+delta);
+  const newQty=Math.max(0, Math.round((p.qty+delta)*100)/100);
   p.qty=newQty;
   renderStock();
   await dbPatch('products', `id=eq.${id}`, {qty:newQty});
