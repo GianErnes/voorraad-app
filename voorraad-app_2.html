@@ -1035,8 +1035,22 @@ function renderSettings() {
   document.getElementById('cat-list').innerHTML=db.categories.length===0?'<div class="empty" style="padding:10px 0">Geen categorieën</div>':
     db.categories.map((c,i)=>`<div class="cat-tag">
       <span class="cat-name">${c}</span>
+      <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editCategory(${i})">✏️</button>
       <button class="cat-del" onclick="deleteCategory(${i})">×</button>
     </div>`).join('');
+}
+
+async function editCategory(idx) {
+  const oldName=db.categories[idx]; if(!oldName) return;
+  const newName=prompt('Categorienaam aanpassen:', oldName);
+  if(!newName||newName===oldName) return;
+  if(db.categories.includes(newName)) { alert('Deze naam bestaat al.'); return; }
+  setSyncing('syncing');
+  // Update categorie naam in de database
+  await dbPatch('categories', `name=eq.${oldName}`, {name:newName});
+  // Update ook alle producten die deze categorie gebruiken
+  await dbPatch('products', `cat=eq.${oldName}`, {cat:newName});
+  await loadAll(); renderSettings();
 }
 async function addCategory() {
   const val=document.getElementById('new-cat-input').value.trim(); if(!val) return;
@@ -1074,30 +1088,78 @@ function startScan(target) {
 function initScanner() {
   try {
     codeReader=new ZXing.BrowserMultiFormatReader();
-    codeReader.decodeFromConstraints({video:{facingMode:'environment'}},'scan-video',(result)=>{
-      if(result) handleScanResult(result.getText());
-    });
+    const hints=new Map();
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    codeReader.hints=hints;
+    codeReader.decodeFromConstraints(
+      {video:{facingMode:'environment', width:{ideal:1280}, height:{ideal:720}}},
+      'scan-video',
+      (result)=>{ if(result) handleScanResult(result.getText()); }
+    );
   } catch(e) { document.getElementById('scan-status').textContent='❌ Camera niet beschikbaar.'; }
 }
+
 function handleScanResult(code) {
-  stopScan();
+  const prods=db.products.filter(p=>p.barcode===code);
+
   if(scanTarget==='product') {
+    stopScan();
     document.getElementById('p-barcode').value=code;
+
   } else if(scanTarget==='stock') {
-    const prod=db.products.find(p=>p.barcode===code);
-    if(prod) {
-      document.getElementById('stock-search').value=prod.name;
+    stopScan();
+    if(prods.length===0) {
+      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+    } else if(prods.length===1) {
+      document.getElementById('stock-search').value=prods[0].name;
       renderStock();
     } else {
-      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+      showBarcodeChoice(prods, (p)=>{
+        document.getElementById('stock-search').value=p.name;
+        renderStock();
+      });
     }
+
   } else if(scanTarget==='issue') {
-    const prod=db.products.find(p=>p.barcode===code);
-    if(prod) {
-      document.getElementById('issue-product').value=prod.id;
-      document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${prod.name}`;
-    } else { alert(`Barcode "${code}" niet gevonden. Voeg het product eerst toe met deze barcode.`); }
+    stopScan();
+    if(prods.length===0) {
+      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+    } else if(prods.length===1) {
+      document.getElementById('issue-product').value=prods[0].id;
+      document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${prods[0].name}`;
+    } else {
+      showBarcodeChoice(prods, (p)=>{
+        document.getElementById('issue-product').value=p.id;
+        document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
+      });
+    }
   }
+}
+
+function showBarcodeChoice(prods, onSelect) {
+  const existing=document.getElementById('modal-barcode-choice');
+  if(existing) existing.remove();
+  const modal=document.createElement('div');
+  modal.id='modal-barcode-choice';
+  modal.className='modal-overlay open';
+  modal.innerHTML=`<div class="modal">
+    <div class="modal-title">Kies product<span class="modal-close" onclick="document.getElementById('modal-barcode-choice').remove()">×</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Meerdere producten gevonden — kies het juiste:</p>
+    ${prods.map(p=>`<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="barcodeChoose(${p.id})">
+      <div class="card-title">${p.name}</div>
+      <div class="card-sub">${p.cat} · ${p.qty} ${p.unit} op voorraad</div>
+    </div>`).join('')}
+  </div>`;
+  document.body.appendChild(modal);
+  window._barcodeChoiceCallback=onSelect;
+  window._barcodeChoiceProds=prods;
+}
+
+function barcodeChoose(id) {
+  const p=window._barcodeChoiceProds.find(x=>x.id===id);
+  if(p&&window._barcodeChoiceCallback) window._barcodeChoiceCallback(p);
+  const modal=document.getElementById('modal-barcode-choice');
+  if(modal) modal.remove();
 }
 function stopScan() {
   if(codeReader){codeReader.reset();codeReader=null;}
