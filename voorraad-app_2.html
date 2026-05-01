@@ -885,12 +885,10 @@ function openIssueModal(mode) {
   document.getElementById('issue-title-text').textContent=mode==='out'?'Materiaal uitgeven':'Materiaal retourneren';
   document.getElementById('issue-confirm-btn').textContent=mode==='out'?'Uitgeven':'Retourneren';
 
-  const projects = mode==='out'
-    ? db.projects.filter(p=>p.status==='actief')
-    : db.projects;
+  const projects = db.projects.filter(p=>p.status==='actief');
   document.getElementById('issue-project').innerHTML=
     `<option value="">— Geen project —</option>`+
-    projects.map(p=>`<option value="${p.id}">${p.name} (${p.status})</option>`).join('');
+    projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 
   issueProducts = mode==='out' ? db.products : [];
   document.getElementById('issue-search').value='';
