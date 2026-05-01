@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voorraad App – Gebruiksaanwijzing</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f5f5; --surface: #ffffff; --border: #e0e0e0;
+    --accent: #c47f20; --text: #1a1a1a; --muted: #555555;
+    --green: #2e7d52; --red: #c0392b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 16px; padding: 32px 20px 60px; max-width: 680px; margin: 0 auto; }
+
+  .logo { font-size: 30px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 36px; }
+
+  .url-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 36px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .url-bar span { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--accent); word-break: break-all; }
+  .pin { background: var(--accent); color: #fff; font-weight: 600; font-family: 'DM Mono', monospace; padding: 5px 12px; border-radius: 6px; font-size: 16px; white-space: nowrap; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+
+  .step { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 8px; display: flex; gap: 14px; align-items: flex-start; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .step-num { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text); }
+  .step-desc { font-size: 15px; color: var(--muted); line-height: 1.5; }
+  .step-desc b { color: var(--text); }
+
+  .tip { background: #fff8ee; border: 1px solid #f0d5a0; border-radius: 10px; padding: 13px 16px; margin-bottom: 8px; font-size: 15px; color: #555; line-height: 1.5; }
+  .tip b { color: var(--accent); }
+
+  .tabs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tab-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .tab-icon { font-size: 22px; margin-bottom: 6px; }
+  .tab-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .tab-desc { font-size: 13px; color: var(--muted); line-height: 1.4; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  .badge { display: inline-block; font-size: 12px; font-family: 'DM Mono', monospace; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+  .badge-green { background: #e6f4ed; color: var(--green); }
+  .badge-red { background: #fdecea; color: var(--red); }
+  .badge-orange { background: #fff3e0; color: #b45309; }
+
+  .status-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .status-row:last-child { border-bottom: none; }
+  .status-row span:last-child { font-size: 15px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="logo">🎨 Ernes Schilders</div>
+<div class="subtitle">Voorraad App — Gebruiksaanwijzing</div>
+
+<div class="url-bar">
+  <div style="flex:1">
+    <div style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:4px">APP URL — open in Safari</div>
+    <span>gianernes.github.io/voorraad-app/voorraad-app_2.html</span>
+  </div>
+  <div>
+    <div style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:4px">PINCODE</div>
+    <div class="pin">6422</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">De 4 tabbladen</div>
+  <div class="tabs-grid">
+    <div class="tab-card"><div class="tab-icon">⊞</div><div class="tab-name">Dashboard</div><div class="tab-desc">Overzicht: wat is laag, recente activiteit</div></div>
+    <div class="tab-card"><div class="tab-icon">◈</div><div class="tab-name">Voorraad</div><div class="tab-desc">Alle producten, zoeken, aanpassen</div></div>
+    <div class="tab-card"><div class="tab-icon">≡</div><div class="tab-name">Projecten</div><div class="tab-desc">Lopende projecten en kosten</div></div>
+    <div class="tab-card"><div class="tab-icon">✓</div><div class="tab-name">Bestellen</div><div class="tab-desc">Bestellijst per leverancier</div></div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section">
+  <div class="section-title">Materiaal uitgeven aan project</div>
+  <div class="step"><div class="step-num">1</div><div><div class="step-title">Tik op de + knop</div><div class="step-desc">Rechtsonder. Kies <b>🎨 Materiaal uitgeven</b></div></div></div>
+  <div class="step"><div class="step-num">2</div><div><div class="step-title">Kies het project</div><div class="step-desc">Selecteer het juiste project bovenaan</div></div></div>
+  <div class="step"><div class="step-num">3</div><div><div class="step-title">Zoek het product</div><div class="step-desc">Typ in de zoekbalk <b>óf</b> scan de barcode met <b>📷 Scan barcode</b></div></div></div>
+  <div class="step"><div class="step-num">4</div><div><div class="step-title">Tik op het product en bevestig</div><div class="step-desc">Pas de hoeveelheid aan en tik <b>Uitgeven</b></div></div></div>
+</div>
+
+<hr>
+
+<div class="section">
+  <div class="section-title">Materiaal retourneren</div>
+  <div class="step"><div class="step-num">1</div><div><div class="step-title">Tik op de + knop</div><div class="step-desc">Kies <b>↩️ Materiaal retourneren</b></div></div></div>
+  <div class="step"><div class="step-num">2</div><div><div class="step-title">Kies eerst het project</div><div class="step-desc">De lijst toont daarna <b>alleen producten van dat project</b></div></div></div>
+  <div class="step"><div class="step-num">3</div><div><div class="step-title">Selecteer product en hoeveelheid</div><div class="step-desc">Tik op het product, vul de hoeveelheid in en bevestig</div></div></div>
+</div>
+
+<hr>
+
+<div class="section">
+  <div class="section-title">Voorraad bijwerken (loods ronde)</div>
+  <div class="step"><div class="step-num">1</div><div><div class="step-title">Ga naar tabblad Voorraad</div><div class="step-desc">Zoek via de zoekbalk of scan de barcode met 📷</div></div></div>
+  <div class="step"><div class="step-num">2</div><div><div class="step-title">Gebruik de − en + knoppen</div><div class="step-desc">Direct op de kaart, stappen van <b>0,25</b>. Wordt automatisch opgeslagen</div></div></div>
+  <div class="tip">💡 <b>Tip:</b> Loop door de loods en pas elk product direct aan. Alle iPhones zien wijzigingen meteen.</div>
+</div>
+
+<hr>
+
+<div class="section">
+  <div class="section-title">Wat betekenen de kleuren?</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+    <div class="status-row"><span class="badge badge-green">OK</span><span>Voorraad is voldoende</span></div>
+    <div class="status-row"><span class="badge badge-orange">Bijna op</span><span>Bijna onder minimumvoorraad</span></div>
+    <div class="status-row"><span class="badge badge-red">Laag</span><span>Onder minimum — staat op bestellijst</span></div>
+    <div class="status-row"><span class="badge badge-red">Leeg</span><span>Geen voorraad meer</span></div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section">
+  <div class="section-title">Handige tips</div>
+  <div class="tip">📷 <b>Barcode scannen:</b> Houd de iPhone rechtop of op de kop boven de barcode</div>
+  <div class="tip">🔄 <b>Synchronisatie:</b> Alle iPhones zijn realtime gesynchroniseerd — wijzigingen zijn meteen zichtbaar</div>
+  <div class="tip">🔐 <b>Pincode:</b> Sessie blijft actief zolang Safari open is. Na afsluiten opnieuw pincode invoeren</div>
+  <div class="tip">📤 <b>Bestellen:</b> Tabblad Bestellen toont per leverancier wat besteld moet worden. WhatsApp knop stuurt de lijst direct</div>
+</div>
+
+</body>
+</html>
