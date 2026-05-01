@@ -237,7 +237,7 @@
     </div>
     <div class="form-group"><label>CATEGORIE</label><select id="p-cat"></select></div>
     <div class="form-group"><label>EENHEID</label>
-      <select id="p-unit"><option>emmer</option><option>blik</option><option>rol</option><option>stuk</option><option>meter</option><option>liter</option></select>
+      <select id="p-unit"><option>emmer</option><option>blik</option><option>rol</option><option>stuk</option><option>meter</option><option>liter</option><option>kg</option></select>
     </div>
     <div class="form-group"><label>HUIDIGE VOORRAAD</label><input id="p-qty" type="number" min="0" placeholder="0"></div>
     <div class="form-group"><label>MINIMUMVOORRAAD</label><input id="p-min" type="number" min="0" placeholder="5"></div>
@@ -841,10 +841,18 @@ async function saveProduct() {
 async function deleteProduct() {
   const editId=parseInt(document.getElementById('p-id').value)||null; if(!editId) return;
   const p=db.products.find(x=>x.id===editId);
-  if(p&&confirm(`Product "${p.name}" verwijderen?`)) {
-    setSyncing('syncing');
+  if(!p) return;
+  if(!confirm(`Product "${p.name}" verwijderen?`)) return;
+  setSyncing('syncing');
+  try {
+    // Verwijder eerst de history regels die naar dit product verwijzen
+    await dbDelete('history', `product_id=eq.${editId}`);
+    // Dan het product zelf
     await dbDelete('products', `id=eq.${editId}`);
     closeModal('modal-product'); await loadAll();
+  } catch(e) {
+    setSyncing('error');
+    alert(`Kon product niet verwijderen: ${e.message}`);
   }
 }
 
