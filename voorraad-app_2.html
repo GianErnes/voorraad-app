@@ -266,7 +266,14 @@
     </div>
     <div class="form-group" id="issue-product-group">
       <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
-      <label>PRODUCT</label><select id="issue-product"></select>
+      <label>PRODUCT</label>
+      <div style="position:relative;margin-bottom:8px">
+        <input id="issue-search" placeholder="🔍 Zoek product…" oninput="filterIssueProducts()" style="padding-right:32px">
+        <button onclick="clearIssueSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">×</button>
+      </div>
+      <div id="issue-product-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
+      <input type="hidden" id="issue-product">
+      <div id="issue-selected" style="font-size:13px;color:var(--accent);margin-top:6px;min-height:18px"></div>
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper"><button onclick="stepVal('issue-qty',-1)">−</button><input id="issue-qty" type="number" value="1" min="1"><button onclick="stepVal('issue-qty',1)">+</button></div>
@@ -866,12 +873,13 @@ async function saveSupplier() {
 
 // ====================== ISSUE ======================
 let issueMode='out';
+let issueProducts=[];
+
 function openIssueModal(mode) {
   issueMode=mode;
   document.getElementById('issue-title-text').textContent=mode==='out'?'Materiaal uitgeven':'Materiaal retourneren';
   document.getElementById('issue-confirm-btn').textContent=mode==='out'?'Uitgeven':'Retourneren';
 
-  // Project dropdown - bij retour ook afgeronde projecten tonen
   const projects = mode==='out'
     ? db.projects.filter(p=>p.status==='actief')
     : db.projects;
@@ -879,41 +887,75 @@ function openIssueModal(mode) {
     `<option value="">— Geen project —</option>`+
     projects.map(p=>`<option value="${p.id}">${p.name} (${p.status})</option>`).join('');
 
-  // Bij uitgeven: alle producten tonen
-  // Bij retourneren: eerst project kiezen, dan filteren
-  if(mode==='out') {
-    document.getElementById('issue-product').innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name} (${p.qty} ${p.unit})</option>`).join('');
-  } else {
-    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
-  }
+  issueProducts = mode==='out' ? db.products : [];
+  document.getElementById('issue-search').value='';
+  document.getElementById('issue-product').value='';
+  document.getElementById('issue-selected').textContent='';
+  renderIssueProductList(issueProducts);
 
   document.getElementById('issue-qty').value=1;
   document.getElementById('issue-note').value='';
   openModal('modal-issue');
 }
 
+function renderIssueProductList(prods) {
+  const list=document.getElementById('issue-product-list');
+  if(!prods.length) {
+    list.innerHTML='<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">Geen producten gevonden</div>';
+    return;
+  }
+  list.innerHTML=prods.map(p=>`
+    <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
+      <div style="font-weight:500">${p.name}</div>
+      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${p.qty} ${p.unit} · ${p.cat}</div>
+    </div>`).join('');
+}
+
+function filterIssueProducts() {
+  const q=document.getElementById('issue-search').value.toLowerCase();
+  const filtered=issueProducts.filter(p=>p.name.toLowerCase().includes(q));
+  renderIssueProductList(filtered);
+}
+
+function clearIssueSearch() {
+  document.getElementById('issue-search').value='';
+  renderIssueProductList(issueProducts);
+}
+
+function selectIssueProduct(id) {
+  const p=db.products.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('issue-product').value=id;
+  document.getElementById('issue-selected').textContent='✅ '+p.name;
+  document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
+  // Highlight geselecteerde
+  document.querySelectorAll('#issue-product-list > div').forEach(el=>el.style.background='');
+  const el=document.getElementById('issue-prod-'+id);
+  if(el) el.style.background='var(--surface)';
+}
+
 function onIssueProjectChange() {
   if(issueMode!=='in') return;
   const projId=parseInt(document.getElementById('issue-project').value)||null;
   if(!projId) {
-    document.getElementById('issue-product').innerHTML='<option>— Kies eerst een project —</option>';
+    issueProducts=[];
+    renderIssueProductList([]);
     return;
   }
-  // Haal producten op die op dit project geboekt zijn
   const projectLines=db.history.filter(h=>h.projectId===projId&&h.type==='out');
   const productIds=[...new Set(projectLines.map(h=>h.productId))];
   if(!productIds.length) {
-    document.getElementById('issue-product').innerHTML='<option>Geen materiaal geboekt op dit project</option>';
+    issueProducts=[];
+    renderIssueProductList([]);
     return;
   }
-  const projectProducts=db.products.filter(p=>productIds.includes(p.id));
-  document.getElementById('issue-product').innerHTML=projectProducts.map(p=>{
-    const uitgegeven=projectLines.filter(h=>h.productId===p.id).reduce((s,h)=>s+h.qty,0);
-    return `<option value="${p.id}">${p.name} (${uitgegeven} uitgegeven)</option>`;
-  }).join('');
+  issueProducts=db.products.filter(p=>productIds.includes(p.id));
+  document.getElementById('issue-search').value='';
+  renderIssueProductList(issueProducts);
 }
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
+  if(!prodId) { alert('Selecteer eerst een product.'); return; }
   const qty=parseInt(document.getElementById('issue-qty').value)||1;
   const projId=parseInt(document.getElementById('issue-project').value)||null;
   const note=document.getElementById('issue-note').value;
@@ -1125,13 +1167,9 @@ function handleScanResult(code) {
     if(prods.length===0) {
       alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
     } else if(prods.length===1) {
-      document.getElementById('issue-product').value=prods[0].id;
-      document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${prods[0].name}`;
+      selectIssueProduct(prods[0].id);
     } else {
-      showBarcodeChoice(prods, (p)=>{
-        document.getElementById('issue-product').value=p.id;
-        document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
-      });
+      showBarcodeChoice(prods, (p)=>{ selectIssueProduct(p.id); });
     }
   }
 }
