@@ -276,7 +276,12 @@
       <div id="issue-selected" style="font-size:13px;color:var(--accent);margin-top:6px;min-height:18px"></div>
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
-      <div class="stepper"><button onclick="stepVal('issue-qty',-1)">−</button><input id="issue-qty" type="number" value="1" min="1"><button onclick="stepVal('issue-qty',1)">+</button></div>
+      <div class="stepper">
+        <button onclick="stepIssueQty(-0.25)">−</button>
+        <input id="issue-qty" type="number" value="1" min="0.25" step="0.25" style="width:70px;text-align:center">
+        <button onclick="stepIssueQty(0.25)">+</button>
+        <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'DM Mono',monospace"></span>
+      </div>
     </div>
     <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
     <button class="btn btn-primary btn-full" id="issue-confirm-btn" onclick="confirmIssue()">Bevestigen</button>
@@ -907,7 +912,7 @@ function renderIssueProductList(prods) {
   list.innerHTML=prods.map(p=>`
     <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
       <div style="font-weight:500">${p.name}</div>
-      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${p.qty} ${p.unit} · ${p.cat}</div>
+      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
     </div>`).join('');
 }
 
@@ -922,11 +927,18 @@ function clearIssueSearch() {
   renderIssueProductList(issueProducts);
 }
 
+function stepIssueQty(delta) {
+  const el=document.getElementById('issue-qty');
+  const val=Math.round(((parseFloat(el.value)||0)+delta)*100)/100;
+  el.value=Math.max(0.25, val);
+}
+
 function selectIssueProduct(id) {
   const p=db.products.find(x=>x.id===id);
   if(!p) return;
   document.getElementById('issue-product').value=id;
-  document.getElementById('issue-selected').textContent='✅ '+p.name;
+  document.getElementById('issue-selected').textContent=`✅ ${p.name} — op voorraad: ${p.qty} ${p.unit}`;
+  document.getElementById('issue-qty-unit').textContent=p.unit;
   document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
   // Highlight geselecteerde
   document.querySelectorAll('#issue-product-list > div').forEach(el=>el.style.background='');
@@ -956,12 +968,13 @@ function onIssueProjectChange() {
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
-  const qty=parseInt(document.getElementById('issue-qty').value)||1;
+  const qty=Math.round((parseFloat(document.getElementById('issue-qty').value)||0.25)*100)/100;
+  if(qty<=0) { alert('Voer een geldige hoeveelheid in.'); return; }
   const projId=parseInt(document.getElementById('issue-project').value)||null;
   const note=document.getElementById('issue-note').value;
   const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
   if(issueMode==='out'&&prod.qty<qty) { alert('Onvoldoende voorraad!'); return; }
-  const newQty=prod.qty+(issueMode==='out'?-qty:qty);
+  const newQty=Math.round((prod.qty+(issueMode==='out'?-qty:qty))*100)/100;
   setSyncing('syncing');
   await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
   await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today()});
