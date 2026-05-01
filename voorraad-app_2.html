@@ -940,6 +940,22 @@ function selectIssueProduct(id) {
   document.getElementById('issue-selected').textContent=`✅ ${p.name} — op voorraad: ${p.qty} ${p.unit}`;
   document.getElementById('issue-qty-unit').textContent=p.unit;
   document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
+
+  // Bij retourneren: automatisch de uitgegeven hoeveelheid invullen
+  if(issueMode==='in') {
+    const projId=parseInt(document.getElementById('issue-project').value)||null;
+    if(projId) {
+      const uitgegeven=db.history.filter(h=>h.projectId===projId&&h.productId===p.id&&h.type==='out').reduce((s,h)=>s+h.qty,0);
+      const retour=db.history.filter(h=>h.projectId===projId&&h.productId===p.id&&h.type==='in').reduce((s,h)=>s+h.qty,0);
+      const nog=Math.max(0, Math.round((uitgegeven-retour)*100)/100);
+      document.getElementById('issue-qty').value=nog||0.25;
+    }
+  } else {
+    // Uitgeven: als voorraad < 1, gebruik de voorraad als standaard hoeveelheid
+    const defaultQty = p.qty > 0 && p.qty < 1 ? p.qty : 1;
+    document.getElementById('issue-qty').value=defaultQty;
+  }
+
   // Highlight geselecteerde
   document.querySelectorAll('#issue-product-list > div').forEach(el=>el.style.background='');
   const el=document.getElementById('issue-prod-'+id);
@@ -978,7 +994,26 @@ async function confirmIssue() {
   setSyncing('syncing');
   await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
   await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today()});
-  closeModal('modal-issue'); await loadAll();
+  await loadAll();
+
+  // Modal blijft open — reset product, project blijft staan
+  const savedProjId = projId;
+  document.getElementById('issue-product').value='';
+  document.getElementById('issue-selected').textContent='✅ Geboekt! Kies volgend product:';
+  document.getElementById('issue-qty').value=issueMode==='out'?1:0.25;
+  document.getElementById('issue-qty-unit').textContent='';
+  document.getElementById('issue-note').value='';
+  document.getElementById('issue-confirm-btn').textContent=issueMode==='out'?'Uitgeven':'Retourneren';
+  document.getElementById('issue-search').value='';
+
+  // Herlaad productlijst
+  if(savedProjId) {
+    document.getElementById('issue-project').value=savedProjId;
+    onIssueProjectChange();
+  } else {
+    issueProducts=db.products;
+    renderIssueProductList(issueProducts);
+  }
 }
 
 // ====================== DETAIL MODALS ======================
