@@ -8,15 +8,17 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Voorraad">
 <title>Voorraad – Schildersbedrijf</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3347;
-    --accent:#e8a048;--accent2:#5b8ef0;--red:#e05c5c;--green:#4caf7d;
-    --text:#e8eaf0;--muted:#6b7280;--radius:14px;--tab-h:68px;
+    --bg:#f5f5f5;--surface:#ffffff;--surface2:#fafafa;--border:#e5e5e5;
+    --accent:#e63946;--accent2:#2563b0;--red:#e63946;--green:#2e7d52;
+    --text:#1a1a1a;--muted:#6b7280;--radius:8px;--tab-h:68px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+    --shadow:0 1px 3px rgba(0,0,0,.08);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100dvh;overflow-x:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100dvh;overflow-x:hidden;}
   /* SYNC INDICATOR */
   .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-left:8px;vertical-align:middle;transition:background .3s;}
   .sync-dot.syncing{background:var(--accent);animation:pulse 1s infinite;}
@@ -28,7 +30,7 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .header{padding:52px 20px 14px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
   .header h1{font-size:22px;font-weight:600;letter-spacing:-.5px;}
-  .header p{font-size:12px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;}
+  .header p{font-size:12px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;}
   .tabs{position:fixed;bottom:0;left:0;right:0;height:var(--tab-h);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom);}
   .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;transition:color .2s;padding-top:6px;}
   .tab.active{color:var(--accent);}
@@ -38,25 +40,25 @@
   .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
   .card-row{display:flex;justify-content:space-between;align-items:center;}
   .card-title{font-weight:500;font-size:15px;}
-  .card-sub{font-size:12px;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace;}
-  .badge{font-size:11px;font-family:'DM Mono',monospace;padding:3px 8px;border-radius:20px;font-weight:500;}
+  .card-sub{font-size:12px;color:var(--muted);margin-top:3px;font-family:'JetBrains Mono',monospace;}
+  .badge{font-size:11px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;font-weight:500;}
   .badge-ok{background:rgba(76,175,125,.15);color:var(--green);}
   .badge-low{background:rgba(232,100,70,.15);color:var(--red);}
   .badge-warn{background:rgba(232,160,72,.15);color:var(--accent);}
-  .badge-blue{background:rgba(91,142,240,.15);color:var(--accent2);}
+  .badge-blue{background:#e7f0fa;color:var(--accent2);}
   .stock-bar-wrap{margin-top:10px;}
   .stock-bar-bg{height:5px;background:var(--border);border-radius:10px;overflow:hidden;}
   .stock-bar-fill{height:100%;border-radius:10px;transition:width .4s;}
-  .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:opacity .15s,transform .1s;text-decoration:none;}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:opacity .15s,transform .1s;text-decoration:none;}
   .btn:active{transform:scale(.97);opacity:.85;}
-  .btn-primary{background:var(--accent);color:#000;}
-  .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+  .btn-primary{background:var(--accent);color:#fff;font-weight:500;}
+  .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);}
   .btn-danger{background:rgba(224,92,92,.15);color:var(--red);border:1px solid rgba(224,92,92,.3);}
   .btn-green{background:rgba(76,175,125,.15);color:var(--green);border:1px solid rgba(76,175,125,.3);}
   .btn-full{width:100%;justify-content:center;margin-top:8px;}
   .form-group{margin-bottom:14px;}
-  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px;font-family:'DM Mono',monospace;}
-  input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:12px 14px;-webkit-appearance:none;outline:none;transition:border-color .2s;}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px;font-family:'JetBrains Mono',monospace;}
+  input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Inter',sans-serif;font-size:15px;padding:12px 14px;-webkit-appearance:none;outline:none;transition:border-color .2s;}
   input:focus,select:focus{border-color:var(--accent2);}
   select option{background:var(--surface2);}
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
@@ -64,25 +66,25 @@
   .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:90dvh;overflow-y:auto;}
   .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
   .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
-  .fab{position:fixed;right:20px;bottom:calc(var(--tab-h) + 28px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#000;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(232,160,72,.35);z-index:150;transition:transform .15s;}
+  .fab{position:fixed;right:20px;bottom:calc(var(--tab-h) + 28px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(230,57,70,.3);z-index:150;transition:transform .15s;}
   .fab:active{transform:scale(.92);}
-  .section-hdr{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px;}
+  .section-hdr{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px;}
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
   .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
-  .stat-val{font-size:26px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);}
+  .stat-val{font-size:26px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--accent);}
   .stat-lbl{font-size:11px;color:var(--muted);margin-top:4px;}
   .proj-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
   .proj-item:last-child{border-bottom:none;}
   .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
   .chip{padding:6px 14px;border-radius:20px;font-size:13px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .15s;white-space:nowrap;}
-  .chip.active{background:var(--accent);color:#000;border-color:var(--accent);}
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   .action-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
   .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;}
   .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
   .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
   .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}
   .hist-text{font-size:13px;}
-  .hist-date{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+  .hist-date{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
   hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
   .stepper{display:flex;align-items:center;gap:10px;}
   .stepper button{width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -90,7 +92,7 @@
   .sup-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden;}
   .sup-block-hdr{background:var(--surface2);padding:12px 14px;border-bottom:1px solid var(--border);}
   .sup-block-hdr-name{font-weight:600;font-size:15px;}
-  .sup-block-hdr-sub{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:3px;}
+  .sup-block-hdr-sub{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px;}
   .sup-block-body{padding:0 14px;}
   .sup-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
   .sup-row:last-of-type{border-bottom:none;}
@@ -103,7 +105,7 @@
   .recv-row:last-child{border-bottom:none;}
   .btn-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
   .btn-row .btn{flex:1;justify-content:center;min-width:80px;}
-  .pin-btn { width:72px;height:72px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:24px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s; }
+  .pin-btn { width:72px;height:72px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:24px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s; }
   .pin-btn:active { background:var(--surface2); }
   .pin-dot { width:14px;height:14px;border-radius:50%;background:var(--border);transition:background .2s; }
   .pin-dot.filled { background:var(--accent); }
@@ -285,7 +287,7 @@
         <button onclick="stepIssueQty(-0.25)">−</button>
         <input id="issue-qty" type="number" value="1" min="0.25" step="0.25" style="width:70px;text-align:center">
         <button onclick="stepIssueQty(0.25)">+</button>
-        <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'DM Mono',monospace"></span>
+        <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
       </div>
     </div>
     <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
@@ -346,7 +348,7 @@
   <div class="modal">
     <div class="modal-title"><span id="export-modal-title">Bestellijst</span><span class="modal-close" onclick="closeModal('modal-export')">×</span></div>
     <p id="export-modal-msg" style="font-size:13px;color:var(--muted);margin-bottom:12px"></p>
-    <textarea id="export-textarea" readonly style="font-family:'DM Mono',monospace;font-size:12px;line-height:1.6;height:280px;resize:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px;width:100%"></textarea>
+    <textarea id="export-textarea" readonly style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;height:280px;resize:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px;width:100%"></textarea>
     <button class="btn btn-primary btn-full" onclick="copyExportText()" style="margin-top:10px">📋 Kopieer naar klembord</button>
   </div>
 </div>
@@ -486,7 +488,7 @@ async function loadAll() {
       <div style="padding:30px;text-align:center">
         <div style="font-size:40px;margin-bottom:16px">⚠️</div>
         <div style="color:var(--red);font-size:15px;margin-bottom:8px">Verbindingsfout</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:20px;font-family:'DM Mono',monospace">${e.message||'Onbekende fout'}</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:20px;font-family:'JetBrains Mono',monospace">${e.message||'Onbekende fout'}</div>
         <div style="color:var(--muted);font-size:12px;margin-bottom:20px">Controleer of de SQL is uitgevoerd in Supabase.</div>
         <button class="btn btn-primary" onclick="loadAll()">🔄 Opnieuw proberen</button>
       </div>`;
@@ -582,7 +584,7 @@ function renderStock() {
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           <button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
-          <div style="font-family:'DM Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
           <button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>
           <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
         </div>
@@ -649,7 +651,7 @@ function renderOrders() {
           ${items.map(p=>{const q=p.min*2-p.qty;return `<div class="sup-row">
             <div><div style="font-weight:500;font-size:14px">${p.name}</div>
             <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · €${p.price}/${p.unit}</div></div>
-            <div style="text-align:right"><div style="font-family:'DM Mono',monospace;font-size:15px;color:var(--accent)">${q}×</div>
+            <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q}×</div>
             <div class="card-sub">€${(q*p.price).toFixed(2)}</div></div>
           </div>`;}).join('')}
         </div>
@@ -923,7 +925,7 @@ function renderIssueProductList(prods) {
   list.innerHTML=prods.map(p=>`
     <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
       <div style="font-weight:500">${p.name}</div>
-      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
     </div>`).join('');
 }
 
@@ -1081,7 +1083,7 @@ function openProjDetail(id) {
       const pr=db.products.find(x=>x.id===h.productId);
       return `<div class="proj-item">
         <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${h.date} · ${h.type==='out'?'Uitgegeven':'Retour'}</div></div>
-        <div style="text-align:right;font-family:'DM Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
+        <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
           ${h.type==='out'?'-':'+'}${h.qty} ${pr?pr.unit:''}</div>
       </div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen materiaal geboekt</div>'}`;
