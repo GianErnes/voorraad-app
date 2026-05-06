@@ -1286,9 +1286,43 @@ function stopScan() {
   closeModal('modal-scanner');
 }
 
-// ====================== EXPORT DATA ======================
+// ====================== EXPORT DATA (BACKUP) ======================
 function exportData() {
-  shareOrCopy(JSON.stringify(db,null,2),'Voorraad data export');
+  const now = new Date();
+  const date = now.toISOString().slice(0,10); // YYYY-MM-DD
+  const time = now.toTimeString().slice(0,5).replace(':',''); // HHMM
+  const backup = {
+    _meta: {
+      app: 'Ernes voorraad-app',
+      backup_date: now.toISOString(),
+      counts: {
+        products: db.products.length,
+        categories: db.categories.length,
+        suppliers: db.suppliers.length,
+        projects: db.projects.length,
+        history: db.history.length
+      }
+    },
+    products: db.products,
+    categories: db.categories,
+    suppliers: db.suppliers,
+    projects: db.projects,
+    history: db.history
+  };
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const filename = `voorraad-backup-${date}-${time}.json`;
+
+  // Probeer eerst echte file-download (werkt op desktop browser en Android)
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+
+  // Op iOS Safari werkt download niet altijd betrouwbaar — toon toast met grootte
+  const sizeKB = Math.round(json.length/1024);
+  showExportModal(json, `Backup ${filename}`, `✅ Backup gedownload (${sizeKB} KB). Bewaar 'm veilig in iCloud, Drive of e-mail. Lukt het niet? Kopieer hieronder de tekst en plak in een notitie.`);
 }
 
 // ====================== INIT ======================
