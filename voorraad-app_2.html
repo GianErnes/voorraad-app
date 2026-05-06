@@ -169,6 +169,7 @@
       <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
     <div class="chip-row" id="cat-filters"></div>
+    <div class="chip-row" id="min-filters" style="margin-top:6px"></div>
     <div id="stock-list"></div>
   </div>
   <div class="page" id="page-projects" style="padding-bottom:160px">
@@ -247,9 +248,7 @@
       <select id="p-unit"><option>emmer</option><option>blik</option><option>rol</option><option>stuk</option><option>meter</option><option>liter</option><option>kg</option></select>
     </div>
     <div class="form-group"><label>HUIDIGE VOORRAAD</label><input id="p-qty" type="number" min="0" placeholder="0"></div>
-    <div class="form-group"><label>MINIMUMVOORRAAD <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— alarmgrens, hieronder bestellen</span></label><input id="p-min" type="number" min="0" step="0.01" placeholder="5"></div>
-    <div class="form-group"><label>STREEFVOORRAAD <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— wat in het schap moet staan na bestelling</span></label><input id="p-target" type="number" min="0" step="0.01" placeholder="bv. 60"></div>
-    <div class="form-group"><label>VERPAKKINGSEENHEID <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— bestellen in veelvouden hiervan</span></label><input id="p-pack" type="number" min="0.01" step="0.01" placeholder="bv. 10"></div>
+    <div class="form-group"><label>MINIMUMVOORRAAD</label><input id="p-min" type="number" min="0" placeholder="5"></div>
     <div class="form-group"><label>PRIJS PER EENHEID (€)</label><input id="p-price" type="number" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>LEVERANCIER</label><select id="p-supplier"></select></div>
     <button class="btn btn-primary btn-full" onclick="saveProduct()">Opslaan</button>
@@ -317,23 +316,12 @@
 <!-- ADD SUPPLIER -->
 <div class="modal-overlay" id="modal-supplier">
   <div class="modal">
-    <div class="modal-title"><span id="modal-supplier-title-text">Leverancier toevoegen</span><span class="modal-close" onclick="closeModal('modal-supplier')">×</span></div>
+    <div class="modal-title">Leverancier toevoegen<span class="modal-close" onclick="closeModal('modal-supplier')">×</span></div>
     <div class="form-group"><label>NAAM</label><input id="sup-name" placeholder="bv. Sikkens Dealer"></div>
     <div class="form-group"><label>CONTACTPERSOON</label><input id="sup-contact" placeholder=""></div>
     <div class="form-group"><label>EMAIL</label><input id="sup-email" type="email" placeholder=""></div>
     <div class="form-group"><label>TELEFOON</label><input id="sup-phone" type="tel" placeholder=""></div>
     <button class="btn btn-primary btn-full" onclick="saveSupplier()">Opslaan</button>
-  </div>
-</div>
-<!-- DELETE SUPPLIER MODAL -->
-<div class="modal-overlay" id="modal-supplier-delete">
-  <div class="modal">
-    <div class="modal-title">Leverancier verwijderen<span class="modal-close" onclick="closeModal('modal-supplier-delete')">×</span></div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Leverancier "<strong id="del-sup-name"></strong>" heeft <strong id="del-sup-count"></strong> producten. Verplaats deze eerst naar een andere leverancier.</p>
-    <div class="form-group"><label>Verplaats producten naar</label>
-      <select id="del-sup-target"></select>
-    </div>
-    <button class="btn btn-primary btn-full" onclick="confirmDeleteSupplier()">Verplaats en verwijder</button>
   </div>
 </div>
 <!-- DETAIL MODAL -->
@@ -373,7 +361,7 @@
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openModal('modal-project');document.getElementById('pr-date').value=today()">🏗️ Nieuw project</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
-    <button class="btn btn-secondary btn-full" onclick="openSupplierAdd()">🏢 Leverancier toevoegen</button>
+    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openModal('modal-supplier')">🏢 Leverancier toevoegen</button>
   </div>
 </div>
 
@@ -488,7 +476,7 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
     setSyncing('ok');
@@ -517,13 +505,6 @@ function setupRealtime() {
 function today() { return new Date().toISOString().slice(0,10); }
 function getWeek(d) { const j=new Date(d.getFullYear(),0,1); return Math.ceil((((d-j)/86400000)+j.getDay()+1)/7); }
 function supplierName(id) { const s=db.suppliers.find(s=>s.id===id); return s?s.name:'—'; }
-function orderQty(p) {
-  const target=Number(p.target)||Number(p.min)||0;
-  const pack=Number(p.pack)||1;
-  const tekort=target-p.qty;
-  if(tekort<=0) return 0;
-  return Math.ceil(tekort/pack)*pack;
-}
 function stockStatus(p) {
   const r=p.qty/Math.max(p.min,0.001);
   if(r<=0) return ['badge-low','Leeg'];
@@ -586,11 +567,14 @@ function renderDashboard() {
 
 // ====================== STOCK ======================
 let activeCat='Alles';
+let onlyWithMin=false;
 function renderStock() {
   const cats=['Alles',...db.categories];
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.replace(/"/g,'&quot;')}">${c}</div>`).join('');
+  document.getElementById('min-filters').innerHTML=`<div class="chip${onlyWithMin?' active':''}" onclick="toggleMinFilter()">🎯 Met minimum</div>`;
   const search=(document.getElementById('stock-search')||{}).value||'';
   let prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
+  if(onlyWithMin) prods=prods.filter(p=>Number(p.min)>0);
   if(search.trim()) prods=prods.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
@@ -612,6 +596,7 @@ function renderStock() {
     }).join('');
 }
 function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
+function toggleMinFilter() { onlyWithMin=!onlyWithMin; renderStock(); }
 
 function clearSearch() {
   document.getElementById('stock-search').value='';
@@ -661,18 +646,17 @@ function renderOrders() {
     db.suppliers.forEach(s=>{
       const items=needed.filter(p=>p.supplier===s.id);
       if(!items.length) return;
-      const subtotal=items.reduce((sum,p)=>sum+(orderQty(p))*p.price,0);
+      const subtotal=items.reduce((sum,p)=>sum+(p.min*2-p.qty)*p.price,0);
       html+=`<div class="sup-block">
         <div class="sup-block-hdr">
           <div class="sup-block-hdr-name">${s.name}</div>
           <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''} · €${subtotal.toFixed(2)}</div>
         </div>
         <div class="sup-block-body">
-          ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;return `<div class="sup-row">
+          ${items.map(p=>{const q=p.min*2-p.qty;return `<div class="sup-row">
             <div><div style="font-weight:500;font-size:14px">${p.name}</div>
-            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min} · €${p.price}/${p.unit}</div></div>
-            <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
-            ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
+            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · €${p.price}/${p.unit}</div></div>
+            <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q}×</div>
             <div class="card-sub">€${(q*p.price).toFixed(2)}</div></div>
           </div>`;}).join('')}
         </div>
@@ -688,17 +672,11 @@ function renderOrders() {
   }
   document.getElementById('supplier-list').innerHTML=db.suppliers.map(s=>`
     <div class="card">
-      <div class="card-row">
-        <span class="card-title">${s.name}</span>
-        <div style="display:flex;gap:6px">
-          <button class="cat-del" style="color:var(--accent2);font-size:16px" onclick="editSupplier(${s.id})">✏️</button>
-          <button class="cat-del" onclick="deleteSupplier(${s.id})">×</button>
-        </div>
-      </div>
-      <div class="card-sub" style="margin-top:4px">${s.contact||''}</div>
+      <div class="card-row"><span class="card-title">${s.name}</span></div>
+      <div class="card-sub" style="margin-top:4px">${s.contact}</div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        ${s.email?`<a href="mailto:${s.email}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">✉️ ${s.email}</a>`:''}
-        ${s.phone?`<a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 ${s.phone}</a>`:''}
+        <a href="mailto:${s.email}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">✉️ ${s.email}</a>
+        <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 ${s.phone}</a>
       </div>
     </div>`).join('');
 }
@@ -710,8 +688,8 @@ function buildOrderText(supId) {
   if(!s||!items.length) return null;
   const d=new Date();
   let txt=`Bestellijst – ${s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n\n`;
-  items.forEach(p=>{const q=orderQty(p);txt+=`- ${p.name}: ${q} ${p.unit}\n`;});
-  const total=items.reduce((sum,p)=>sum+(orderQty(p))*p.price,0);
+  items.forEach(p=>{const q=p.min*2-p.qty;txt+=`- ${p.name}: ${q} ${p.unit}\n`;});
+  const total=items.reduce((sum,p)=>sum+(p.min*2-p.qty)*p.price,0);
   txt+=`\nTotaal: €${total.toFixed(2)}\n\nMet vriendelijke groet`;
   return {s,items,txt,total,d};
 }
@@ -720,7 +698,7 @@ function exportSupOrder(supId) {
   if(!r) { alert('Niets te exporteren.'); return; }
   const d=new Date();
   let txt=`BESTELLIJST – ${r.s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n${'─'.repeat(40)}\n${r.s.contact} | ${r.s.email} | ${r.s.phone}\n\n`;
-  r.items.forEach(p=>{const q=orderQty(p);txt+=`${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
+  r.items.forEach(p=>{const q=p.min*2-p.qty;txt+=`${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
   txt+=`\nTOTAAL: €${r.total.toFixed(2)}\n`;
   shareOrCopy(txt,`Bestellijst ${r.s.name}`);
 }
@@ -733,10 +711,10 @@ function exportAllOrders() {
     const items=needed.filter(p=>p.supplier===s.id);
     if(!items.length) return;
     txt+=`LEVERANCIER: ${s.name}\n${s.email} | ${s.phone}\n\n`;
-    items.forEach(p=>{const q=orderQty(p);txt+=`  ${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
+    items.forEach(p=>{const q=p.min*2-p.qty;txt+=`  ${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
     txt+='\n';
   });
-  const total=needed.reduce((s,p)=>{const q=orderQty(p);return s+q*p.price;},0);
+  const total=needed.reduce((s,p)=>{const q=p.min*2-p.qty;return s+q*p.price;},0);
   txt+=`TOTAAL: €${total.toFixed(2)}\n`;
   shareOrCopy(txt,'Volledige bestellijst');
 }
@@ -791,7 +769,7 @@ async function confirmReceiveAll() {
 }
 function recvRows(items,showSupplier=false) {
   return items.map(p=>{
-    const suggest=orderQty(p);
+    const suggest=p.min*2-p.qty;
     return `<div class="recv-row">
       <div><div style="font-weight:500;font-size:14px">${p.name}</div>
       <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}Nu: ${p.qty} ${p.unit} · Min: ${p.min}</div></div>
@@ -824,7 +802,7 @@ async function duplicateProduct(id) {
   setSyncing('syncing');
   await dbPost('products', {
     name:newName, cat:p.cat, unit:p.unit,
-    qty:0, min:p.min, target:p.target||p.min, pack:p.pack||1, price:p.price,
+    qty:0, min:p.min, price:p.price,
     supplier_id:p.supplier, barcode:null
   });
   await loadAll();
@@ -846,12 +824,10 @@ function openProductModal(editId=null) {
     document.getElementById('p-unit').value=p.unit;
     document.getElementById('p-qty').value=p.qty;
     document.getElementById('p-min').value=p.min;
-    document.getElementById('p-target').value=p.target||p.min||'';
-    document.getElementById('p-pack').value=p.pack||1;
     document.getElementById('p-price').value=p.price;
     document.getElementById('p-supplier').value=p.supplier;
   } else {
-    ['p-name','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
+    ['p-name','p-barcode','p-qty','p-min','p-price'].forEach(id=>document.getElementById(id).value='');
   }
   openModal('modal-product');
 }
@@ -864,8 +840,6 @@ async function saveProduct() {
     unit:document.getElementById('p-unit').value,
     qty:parseFloat(document.getElementById('p-qty').value)||0,
     min:parseFloat(document.getElementById('p-min').value)||0,
-    target:parseFloat(document.getElementById('p-target').value)||parseFloat(document.getElementById('p-min').value)||0,
-    pack:parseFloat(document.getElementById('p-pack').value)||1,
     price:parseFloat(document.getElementById('p-price').value)||0,
     supplier_id:parseInt(document.getElementById('p-supplier').value)||null,
     barcode:document.getElementById('p-barcode').value.trim()||null
@@ -913,80 +887,12 @@ async function closeProject(id) {
 }
 
 // ====================== SUPPLIER CRUD ======================
-let editingSupplierId=null;
-let deletingSupplierId=null;
-
-function openSupplierAdd() {
-  editingSupplierId=null;
-  document.getElementById('modal-supplier-title-text').textContent='Leverancier toevoegen';
-  ['sup-name','sup-contact','sup-email','sup-phone'].forEach(id=>document.getElementById(id).value='');
-  closeModal('modal-fab');
-  openModal('modal-supplier');
-}
-
-function editSupplier(id) {
-  const s=db.suppliers.find(x=>x.id===id); if(!s) return;
-  editingSupplierId=id;
-  document.getElementById('modal-supplier-title-text').textContent='Leverancier bewerken';
-  document.getElementById('sup-name').value=s.name||'';
-  document.getElementById('sup-contact').value=s.contact||'';
-  document.getElementById('sup-email').value=s.email||'';
-  document.getElementById('sup-phone').value=s.phone||'';
-  openModal('modal-supplier');
-}
-
 async function saveSupplier() {
   const name=document.getElementById('sup-name').value.trim(); if(!name) return;
-  const data={
-    name,
-    contact:document.getElementById('sup-contact').value,
-    email:document.getElementById('sup-email').value,
-    phone:document.getElementById('sup-phone').value
-  };
   setSyncing('syncing');
-  if(editingSupplierId){
-    await dbPatch('suppliers', `id=eq.${editingSupplierId}`, data);
-  } else {
-    await dbPost('suppliers', data);
-  }
+  await dbPost('suppliers', {name,contact:document.getElementById('sup-contact').value,email:document.getElementById('sup-email').value,phone:document.getElementById('sup-phone').value});
   closeModal('modal-supplier');
   ['sup-name','sup-contact','sup-email','sup-phone'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('modal-supplier-title-text').textContent='Leverancier toevoegen';
-  editingSupplierId=null;
-  await loadAll();
-}
-
-async function deleteSupplier(id) {
-  const s=db.suppliers.find(x=>x.id===id); if(!s) return;
-  const products=db.products.filter(p=>p.supplier===id);
-  if(products.length===0) {
-    if(!confirm(`Leverancier "${s.name}" verwijderen?`)) return;
-    setSyncing('syncing');
-    await dbDelete('suppliers', `id=eq.${id}`);
-    await loadAll();
-    return;
-  }
-  const otherSuppliers=db.suppliers.filter(x=>x.id!==id);
-  if(otherSuppliers.length===0) {
-    alert(`Leverancier "${s.name}" heeft ${products.length} producten en er is geen andere leverancier om ze naartoe te verplaatsen. Voeg eerst een andere leverancier toe.`);
-    return;
-  }
-  deletingSupplierId=id;
-  document.getElementById('del-sup-name').textContent=s.name;
-  document.getElementById('del-sup-count').textContent=products.length;
-  document.getElementById('del-sup-target').innerHTML=otherSuppliers.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-  openModal('modal-supplier-delete');
-}
-
-async function confirmDeleteSupplier() {
-  const id=deletingSupplierId; if(!id) return;
-  const targetId=parseInt(document.getElementById('del-sup-target').value);
-  if(!targetId) return;
-  setSyncing('syncing');
-  await dbPatch('products', `supplier_id=eq.${id}`, {supplier_id:targetId});
-  await dbDelete('suppliers', `id=eq.${id}`);
-  closeModal('modal-supplier-delete');
-  deletingSupplierId=null;
   await loadAll();
 }
 
@@ -1201,60 +1107,33 @@ async function reopenProject(id) {
 function exportProject(id) {
   const p=db.projects.find(x=>x.id===id); if(!p) return;
   const lines=db.history.filter(h=>h.projectId===id);
+  const out=lines.filter(h=>h.type==='out'), ret=lines.filter(h=>h.type==='in');
+  const cost=out.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0)
+            -ret.reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0);
 
-  // Groepeer per product: uit en retour apart bijhouden
-  const grouped={};
-  lines.forEach(h=>{
-    const pr=db.products.find(x=>x.id===h.productId);
-    const naam=pr?pr.name:'Onbekend';
-    if(!grouped[naam]) grouped[naam]={out:0,ret:0,unit:pr?pr.unit:'stuk',prijs:pr?pr.price:0};
-    if(h.type==='out') grouped[naam].out += h.qty;
-    else grouped[naam].ret += h.qty;
-  });
-
-  // Splits in drie categorieën: verbruikt (netto>0), heen-en-terug (netto=0), te veel retour (netto<0)
-  const verbruikt=[], heenEnTerug=[], teveelRetour=[];
-  Object.entries(grouped).forEach(([naam,g])=>{
-    const netto=g.out-g.ret;
-    if(netto>0) verbruikt.push({naam,qty:netto,unit:g.unit,prijs:g.prijs});
-    else if(netto===0 && g.out>0) heenEnTerug.push({naam,qty:g.out,unit:g.unit});
-    else if(netto<0) teveelRetour.push({naam,out:g.out,ret:g.ret,netto,unit:g.unit});
-  });
-
-  // Bouw export tekst
   let txt=`MATERIAALLIJST – ${p.name}\n`;
   txt+=`Klant: ${p.client}\nDatum: ${p.date}\nStatus: ${p.status}\n`;
   txt+='─'.repeat(40)+'\n\n';
 
-  let totalCost=0;
-  if(verbruikt.length){
-    verbruikt.forEach(({naam,qty,unit,prijs})=>{
-      const subtotal=qty*prijs;
-      totalCost+=subtotal;
-      txt+=`${naam.padEnd(35)} ${String(qty).padStart(4)} ${unit.padEnd(6)} €${subtotal.toFixed(2)}\n`;
-    });
-  } else {
-    txt+='(geen netto verbruik)\n';
-  }
+  // Groepeer per product
+  const grouped={};
+  lines.forEach(h=>{
+    const pr=db.products.find(x=>x.id===h.productId);
+    const naam=pr?pr.name:'Onbekend';
+    const prijs=pr?pr.price:0;
+    const unit=pr?pr.unit:'stuk';
+    if(!grouped[naam]) grouped[naam]={qty:0,unit,prijs};
+    grouped[naam].qty += h.type==='out'?h.qty:-h.qty;
+  });
+
+  Object.entries(grouped).forEach(([naam,{qty,unit,prijs}])=>{
+    if(qty<=0) return;
+    const subtotal=(qty*prijs).toFixed(2);
+    txt+=`${naam.padEnd(35)} ${String(qty).padStart(4)} ${unit.padEnd(6)} €${subtotal}\n`;
+  });
 
   txt+='\n'+'─'.repeat(40)+'\n';
-  txt+=`TOTAAL MATERIAALKOSTEN: €${totalCost.toFixed(2)}\n`;
-
-  if(heenEnTerug.length){
-    txt+='\n'+'─'.repeat(40)+'\n';
-    txt+='VOLLEDIG RETOUR ONTVANGEN\n';
-    heenEnTerug.forEach(({naam,qty,unit})=>{
-      txt+=`${naam.padEnd(35)} ${qty} ${unit} heen / ${qty} ${unit} retour\n`;
-    });
-  }
-
-  if(teveelRetour.length){
-    txt+='\n'+'─'.repeat(40)+'\n';
-    txt+='⚠️ MEER RETOUR DAN UITGEGEVEN\n';
-    teveelRetour.forEach(({naam,out,ret,netto,unit})=>{
-      txt+=`${naam.padEnd(35)} ${out} ${unit} heen / ${ret} ${unit} retour (saldo ${netto} ${unit})\n`;
-    });
-  }
+  txt+=`TOTAAL MATERIAALKOSTEN: €${cost.toFixed(2)}\n`;
 
   shareOrCopy(txt, `Materiaallijst ${p.name}`);
 }
