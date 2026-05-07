@@ -432,6 +432,22 @@ async function dbGet(table, params='') {
   if(!r.ok) throw new Error(`GET ${table}: ${r.status} ${await r.text()}`);
   return r.json();
 }
+async function dbGetAll(table, baseParams='') {
+  // Haalt ALLE records op via pagination (chunks van 1000 — Supabase max per request)
+  const all = [];
+  let offset = 0;
+  const pageSize = 1000;
+  while(true) {
+    const sep = baseParams ? '&' : '';
+    const params = `${baseParams}${sep}limit=${pageSize}&offset=${offset}`;
+    const batch = await dbGet(table, params);
+    all.push(...batch);
+    if(batch.length < pageSize) break;
+    offset += pageSize;
+    if(offset > 50000) break; // veiligheidsklep
+  }
+  return all;
+}
 async function dbPost(table, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -472,9 +488,9 @@ async function loadAll() {
     const [cats, sups, prods, projs, hist] = await Promise.all([
       dbGet('categories', 'order=name.asc'),
       dbGet('suppliers',  'order=name.asc'),
-      dbGet('products',   'order=name.asc'),
+      dbGetAll('products', 'order=name.asc'),
       dbGet('projects',   'order=date.desc'),
-      dbGet('history',    'order=created_at.desc&limit=200'),
+      dbGetAll('history',  'order=created_at.desc'),
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
