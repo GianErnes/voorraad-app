@@ -315,15 +315,22 @@
     <button class="btn btn-green btn-full" onclick="confirmReceiveAll()">✅ Voorraad bijwerken</button>
   </div>
 </div>
-<!-- ADD SUPPLIER -->
+<!-- ADD/EDIT SUPPLIER -->
 <div class="modal-overlay" id="modal-supplier">
   <div class="modal">
-    <div class="modal-title">Leverancier toevoegen<span class="modal-close" onclick="closeModal('modal-supplier')">×</span></div>
+    <div class="modal-title"><span id="modal-supplier-title-text">Leverancier toevoegen</span><span class="modal-close" onclick="closeModal('modal-supplier')">×</span></div>
     <div class="form-group"><label>NAAM</label><input id="sup-name" placeholder="bv. Sikkens Dealer"></div>
     <div class="form-group"><label>CONTACTPERSOON</label><input id="sup-contact" placeholder=""></div>
     <div class="form-group"><label>EMAIL</label><input id="sup-email" type="email" placeholder=""></div>
     <div class="form-group"><label>TELEFOON</label><input id="sup-phone" type="tel" placeholder=""></div>
     <button class="btn btn-primary btn-full" onclick="saveSupplier()">Opslaan</button>
+  </div>
+</div>
+<!-- DELETE SUPPLIER -->
+<div class="modal-overlay" id="modal-supplier-delete">
+  <div class="modal">
+    <div class="modal-title">Leverancier verwijderen<span class="modal-close" onclick="closeModal('modal-supplier-delete')">×</span></div>
+    <div id="sup-delete-content"></div>
   </div>
 </div>
 <!-- DETAIL MODAL -->
@@ -363,7 +370,7 @@
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openModal('modal-project');document.getElementById('pr-date').value=today()">🏗️ Nieuw project</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
-    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openModal('modal-supplier')">🏢 Leverancier toevoegen</button>
+    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openSupplierAdd()">🏢 Leverancier toevoegen</button>
   </div>
 </div>
 
@@ -698,11 +705,17 @@ function renderOrders() {
   }
   document.getElementById('supplier-list').innerHTML=db.suppliers.map(s=>`
     <div class="card">
-      <div class="card-row"><span class="card-title">${s.name}</span></div>
-      <div class="card-sub" style="margin-top:4px">${s.contact}</div>
+      <div class="card-row">
+        <span class="card-title">${s.name}</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary" style="padding:5px 9px;font-size:13px" onclick="editSupplier(${s.id})">✏️</button>
+          <button class="btn btn-secondary" style="padding:5px 9px;font-size:13px;color:var(--accent)" onclick="deleteSupplier(${s.id})">×</button>
+        </div>
+      </div>
+      <div class="card-sub" style="margin-top:4px">${s.contact||''}</div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <a href="mailto:${s.email}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">✉️ ${s.email}</a>
-        <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 ${s.phone}</a>
+        ${s.email?`<a href="mailto:${s.email}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">✉️ ${s.email}</a>`:''}
+        ${s.phone?`<a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 ${s.phone}</a>`:''}
       </div>
     </div>`).join('');
 }
@@ -917,12 +930,81 @@ async function closeProject(id) {
 }
 
 // ====================== SUPPLIER CRUD ======================
+let editingSupplierId=null;
+let deletingSupplierId=null;
+
+function openSupplierAdd() {
+  editingSupplierId=null;
+  document.getElementById('modal-supplier-title-text').textContent='Leverancier toevoegen';
+  ['sup-name','sup-contact','sup-email','sup-phone'].forEach(id=>document.getElementById(id).value='');
+  openModal('modal-supplier');
+}
+
+function editSupplier(id) {
+  const s=db.suppliers.find(x=>x.id===id); if(!s) return;
+  editingSupplierId=id;
+  document.getElementById('modal-supplier-title-text').textContent='Leverancier bewerken';
+  document.getElementById('sup-name').value=s.name||'';
+  document.getElementById('sup-contact').value=s.contact||'';
+  document.getElementById('sup-email').value=s.email||'';
+  document.getElementById('sup-phone').value=s.phone||'';
+  openModal('modal-supplier');
+}
+
 async function saveSupplier() {
   const name=document.getElementById('sup-name').value.trim(); if(!name) return;
+  const data={
+    name,
+    contact:document.getElementById('sup-contact').value,
+    email:document.getElementById('sup-email').value,
+    phone:document.getElementById('sup-phone').value
+  };
   setSyncing('syncing');
-  await dbPost('suppliers', {name,contact:document.getElementById('sup-contact').value,email:document.getElementById('sup-email').value,phone:document.getElementById('sup-phone').value});
+  if(editingSupplierId) {
+    await dbPatch('suppliers', `id=eq.${editingSupplierId}`, data);
+  } else {
+    await dbPost('suppliers', data);
+  }
   closeModal('modal-supplier');
   ['sup-name','sup-contact','sup-email','sup-phone'].forEach(id=>document.getElementById(id).value='');
+  editingSupplierId=null;
+  await loadAll();
+}
+
+function deleteSupplier(id) {
+  const s=db.suppliers.find(x=>x.id===id); if(!s) return;
+  deletingSupplierId=id;
+  const linked=db.products.filter(p=>p.supplier===id);
+  const others=db.suppliers.filter(x=>x.id!==id);
+  let html=`<p>Weet je zeker dat je <b>${s.name}</b> wilt verwijderen?</p>`;
+  if(linked.length>0) {
+    if(others.length===0) {
+      html+=`<p style="color:var(--accent)">⚠️ ${linked.length} producten zijn aan deze leverancier gekoppeld. Maak eerst een andere leverancier aan voordat je deze kunt verwijderen.</p>`;
+      html+=`<button class="btn btn-secondary btn-full" onclick="closeModal('modal-supplier-delete')">Annuleren</button>`;
+    } else {
+      html+=`<p style="color:var(--accent)">⚠️ ${linked.length} producten zijn aan deze leverancier gekoppeld. Verplaats ze naar:</p>`;
+      html+=`<div class="form-group"><label>NIEUWE LEVERANCIER</label><select id="sup-reassign">${others.map(o=>`<option value="${o.id}">${o.name}</option>`).join('')}</select></div>`;
+      html+=`<button class="btn btn-primary btn-full" onclick="confirmDeleteSupplier()">Verplaats producten en verwijder</button>`;
+    }
+  } else {
+    html+=`<p class="card-sub">Geen producten gekoppeld. Verwijderen kan veilig.</p>`;
+    html+=`<button class="btn btn-primary btn-full" style="background:var(--accent)" onclick="confirmDeleteSupplier()">Verwijder leverancier</button>`;
+  }
+  document.getElementById('sup-delete-content').innerHTML=html;
+  openModal('modal-supplier-delete');
+}
+
+async function confirmDeleteSupplier() {
+  if(!deletingSupplierId) return;
+  setSyncing('syncing');
+  const reassignSel=document.getElementById('sup-reassign');
+  if(reassignSel) {
+    const newSupId=parseInt(reassignSel.value);
+    await dbPatch('products', `supplier_id=eq.${deletingSupplierId}`, {supplier_id:newSupId});
+  }
+  await dbDelete('suppliers', `id=eq.${deletingSupplierId}`);
+  closeModal('modal-supplier-delete');
+  deletingSupplierId=null;
   await loadAll();
 }
 
