@@ -101,8 +101,12 @@
   .cat-tag:last-child{border-bottom:none;}
   .cat-name{flex:1;font-size:14px;}
   .cat-del{background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:2px 8px;}
-  .recv-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
+  .recv-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);gap:10px;}
   .recv-row:last-child{border-bottom:none;}
+  .recv-row.skipped{opacity:.4;}
+  .recv-row.skipped .recv-name{text-decoration:line-through;}
+  .recv-skip{width:32px;height:32px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;flex-shrink:0;}
+  .recv-skip:hover{color:var(--accent);border-color:var(--accent);}
   .btn-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
   .btn-row .btn{flex:1;justify-content:center;min-width:80px;}
   .pin-btn { width:72px;height:72px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:24px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s; }
@@ -239,6 +243,7 @@
     <div class="modal-title"><span id="product-modal-title">Product toevoegen</span><span class="modal-close" onclick="closeModal('modal-product')">×</span></div>
     <input type="hidden" id="p-id">
     <div class="form-group"><label>NAAM</label><input id="p-name" placeholder="bv. Muurverf Wit 10L"></div>
+    <div class="form-group"><label>FACTUUR-NAAM <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— optioneel; gebruikt op bestellijst zodat leverancier 't herkent</span></label><input id="p-factuur-naam" placeholder="bv. Sigmatex superlatex matt kl.(WN) 1ltr"></div>
     <div class="form-group"><label>BARCODE (optioneel)</label>
       <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
       <button class="btn btn-secondary" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
@@ -287,9 +292,9 @@
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper">
-        <button onclick="stepIssueQty(-0.25)">−</button>
-        <input id="issue-qty" type="number" value="1" min="0.25" step="0.25" style="width:70px;text-align:center">
-        <button onclick="stepIssueQty(0.25)">+</button>
+        <button onclick="stepIssueQty(-0.125)">−</button>
+        <input id="issue-qty" type="number" value="1" min="0.125" step="0.125" style="width:70px;text-align:center">
+        <button onclick="stepIssueQty(0.125)">+</button>
         <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
       </div>
     </div>
@@ -501,7 +506,7 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||''}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
     setSyncing('ok');
@@ -678,19 +683,18 @@ function renderOrders() {
     db.suppliers.forEach(s=>{
       const items=needed.filter(p=>p.supplier===s.id);
       if(!items.length) return;
-      const subtotal=items.reduce((sum,p)=>sum+(orderQty(p))*p.price,0);
       html+=`<div class="sup-block">
         <div class="sup-block-hdr">
           <div class="sup-block-hdr-name">${s.name}</div>
-          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''} · €${subtotal.toFixed(2)}</div>
+          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''}</div>
         </div>
         <div class="sup-block-body">
           ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;return `<div class="sup-row">
-            <div><div style="font-weight:500;font-size:14px">${p.name}</div>
-            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min} · €${p.price}/${p.unit}</div></div>
+            <div><div style="font-weight:500;font-size:14px">${orderName(p)}</div>
+            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
             <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
             ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
-            <div class="card-sub">€${(q*p.price).toFixed(2)}</div></div>
+            </div>
           </div>`;}).join('')}
         </div>
         <div class="sup-block-footer">
@@ -721,24 +725,26 @@ function renderOrders() {
 }
 
 // ====================== ORDER EXPORT / WA ======================
+function orderName(p) {
+  // Gebruik factuur_naam als die ingevuld is, anders gewone productnaam
+  return (p.factuur_naam && p.factuur_naam.trim()) ? p.factuur_naam : p.name;
+}
 function buildOrderText(supId) {
   const s=db.suppliers.find(x=>x.id===supId);
   const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
   if(!s||!items.length) return null;
   const d=new Date();
   let txt=`Bestellijst – ${s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n\n`;
-  items.forEach(p=>{const q=orderQty(p);txt+=`- ${p.name}: ${q} ${p.unit}\n`;});
-  const total=items.reduce((sum,p)=>sum+(orderQty(p))*p.price,0);
-  txt+=`\nTotaal: €${total.toFixed(2)}\n\nMet vriendelijke groet`;
-  return {s,items,txt,total,d};
+  items.forEach(p=>{const q=orderQty(p);txt+=`- ${orderName(p)}: ${q} ${p.unit}\n`;});
+  txt+=`\nMet vriendelijke groet`;
+  return {s,items,txt,d};
 }
 function exportSupOrder(supId) {
   const r=buildOrderText(supId);
   if(!r) { alert('Niets te exporteren.'); return; }
   const d=new Date();
   let txt=`BESTELLIJST – ${r.s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n${'─'.repeat(40)}\n${r.s.contact} | ${r.s.email} | ${r.s.phone}\n\n`;
-  r.items.forEach(p=>{const q=orderQty(p);txt+=`${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
-  txt+=`\nTOTAAL: €${r.total.toFixed(2)}\n`;
+  r.items.forEach(p=>{const q=orderQty(p);txt+=`${orderName(p).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
   shareOrCopy(txt,`Bestellijst ${r.s.name}`);
 }
 function exportAllOrders() {
@@ -750,11 +756,9 @@ function exportAllOrders() {
     const items=needed.filter(p=>p.supplier===s.id);
     if(!items.length) return;
     txt+=`LEVERANCIER: ${s.name}\n${s.email} | ${s.phone}\n\n`;
-    items.forEach(p=>{const q=orderQty(p);txt+=`  ${p.name.padEnd(30)} ${String(q).padStart(4)} ${p.unit}   €${(q*p.price).toFixed(2)}\n`;});
+    items.forEach(p=>{const q=orderQty(p);txt+=`  ${orderName(p).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
     txt+='\n';
   });
-  const total=needed.reduce((s,p)=>{const q=orderQty(p);return s+q*p.price;},0);
-  txt+=`TOTAAL: €${total.toFixed(2)}\n`;
   shareOrCopy(txt,'Volledige bestellijst');
 }
 function waSupOrder(supId) {
@@ -809,25 +813,51 @@ async function confirmReceiveAll() {
 function recvRows(items,showSupplier=false) {
   return items.map(p=>{
     const suggest=orderQty(p);
-    return `<div class="recv-row">
-      <div><div style="font-weight:500;font-size:14px">${p.name}</div>
-      <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}Nu: ${p.qty} ${p.unit} · Min: ${p.min}</div></div>
-      <div class="stepper">
-        <button onclick="this.nextElementSibling.value=Math.max(0,parseInt(this.nextElementSibling.value||0)-1)">−</button>
-        <input type="number" class="recv-qty" data-id="${p.id}" value="${suggest}" min="0" style="width:55px;text-align:center">
-        <button onclick="this.previousElementSibling.value=parseInt(this.previousElementSibling.value||0)+1">+</button>
+    return `<div class="recv-row" data-row-id="${p.id}">
+      <div style="flex:1">
+        <div style="font-weight:500;font-size:14px" class="recv-name">${p.name}</div>
+        <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}Nu: ${p.qty} ${p.unit} · Min: ${p.min}</div>
       </div>
+      <div class="stepper">
+        <button onclick="adjustRecv(this,-1)">−</button>
+        <input type="number" class="recv-qty" data-id="${p.id}" value="${suggest}" min="0" step="0.125" style="width:60px;text-align:center">
+        <button onclick="adjustRecv(this,1)">+</button>
+      </div>
+      <button class="recv-skip" onclick="toggleRecvSkip(this)" title="Niet ontvangen">✕</button>
     </div>`;
   }).join('');
+}
+function adjustRecv(btn, delta) {
+  const inp = delta < 0 ? btn.nextElementSibling : btn.previousElementSibling;
+  const cur = parseFloat(inp.value) || 0;
+  inp.value = Math.max(0, Math.round((cur + delta) * 1000) / 1000);
+}
+function toggleRecvSkip(btn) {
+  const row = btn.closest('.recv-row');
+  const skipped = row.classList.toggle('skipped');
+  const inp = row.querySelector('.recv-qty');
+  if(skipped) {
+    inp.dataset.prevValue = inp.value;
+    inp.value = 0;
+    inp.disabled = true;
+    btn.textContent = '↩';
+    btn.title = 'Toch ontvangen';
+  } else {
+    inp.value = inp.dataset.prevValue || 0;
+    inp.disabled = false;
+    btn.textContent = '✕';
+    btn.title = 'Niet ontvangen';
+  }
 }
 async function applyReceive(scope) {
   setSyncing('syncing');
   const rows=document.querySelectorAll(scope+' .recv-qty');
   for(const inp of rows) {
-    const id=parseInt(inp.dataset.id), qty=parseInt(inp.value)||0;
+    const id=parseInt(inp.dataset.id), qty=Math.round((parseFloat(inp.value)||0)*1000)/1000;
     if(qty<=0) continue;
     const p=db.products.find(x=>x.id===id); if(!p) continue;
-    await dbPatch('products', `id=eq.${id}`, {qty: p.qty+qty});
+    const newQty=Math.round((p.qty+qty)*1000)/1000;
+    await dbPatch('products', `id=eq.${id}`, {qty: newQty});
     await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today()});
   }
   await loadAll();
@@ -858,6 +888,7 @@ function openProductModal(editId=null) {
   if(editId) {
     const p=db.products.find(x=>x.id===editId); if(!p) return;
     document.getElementById('p-name').value=p.name;
+    document.getElementById('p-factuur-naam').value=p.factuur_naam||'';
     document.getElementById('p-barcode').value=p.barcode||'';
     document.getElementById('p-cat').value=p.cat;
     document.getElementById('p-unit').value=p.unit;
@@ -868,7 +899,7 @@ function openProductModal(editId=null) {
     document.getElementById('p-price').value=p.price;
     document.getElementById('p-supplier').value=p.supplier;
   } else {
-    ['p-name','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
+    ['p-name','p-factuur-naam','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
   }
   openModal('modal-product');
 }
@@ -885,7 +916,8 @@ async function saveProduct() {
     pack:parseFloat(document.getElementById('p-pack').value)||1,
     price:parseFloat(document.getElementById('p-price').value)||0,
     supplier_id:parseInt(document.getElementById('p-supplier').value)||null,
-    barcode:document.getElementById('p-barcode').value.trim()||null
+    barcode:document.getElementById('p-barcode').value.trim()||null,
+    factuur_naam:document.getElementById('p-factuur-naam').value.trim()||null
   };
   setSyncing('syncing');
   if(editId) await dbPatch('products', `id=eq.${editId}`, data);
@@ -1059,8 +1091,8 @@ function clearIssueSearch() {
 
 function stepIssueQty(delta) {
   const el=document.getElementById('issue-qty');
-  const val=Math.round(((parseFloat(el.value)||0)+delta)*100)/100;
-  el.value=Math.max(0.25, val);
+  const val=Math.round(((parseFloat(el.value)||0)+delta)*1000)/1000;
+  el.value=Math.max(0.125, val);
 }
 
 function selectIssueProduct(id) {
@@ -1114,7 +1146,7 @@ function onIssueProjectChange() {
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
-  const qty=Math.round((parseFloat(document.getElementById('issue-qty').value)||0.25)*100)/100;
+  const qty=Math.round((parseFloat(document.getElementById('issue-qty').value)||0.125)*1000)/1000;
   if(qty<=0) { alert('Voer een geldige hoeveelheid in.'); return; }
   const projId=parseInt(document.getElementById('issue-project').value)||null;
   const note=document.getElementById('issue-note').value;
