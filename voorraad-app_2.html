@@ -78,6 +78,10 @@
   .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
   .chip{padding:6px 14px;border-radius:20px;font-size:13px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .15s;white-space:nowrap;}
   .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .color-chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .color-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 4px 4px 10px;border-radius:14px;font-size:12px;font-family:'JetBrains Mono',monospace;background:rgba(76,140,210,.15);color:var(--accent2);border:1px solid rgba(76,140,210,.3);}
+  .color-chip-x{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(76,140,210,.2);cursor:pointer;font-size:14px;line-height:1;}
+  .color-chip-x:hover{background:var(--red);color:#fff;}
   .action-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
   .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;}
   .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
@@ -619,7 +623,7 @@ function renderStock() {
       const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
       return `<div class="card">
         <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
-          <span class="card-title">${p.name}</span>
+          <span class="card-title">${p.name}${(Array.isArray(p.color_codes)&&p.color_codes.length)?` <span title="${p.color_codes.length} kleurcode${p.color_codes.length===1?'':'s'}: ${p.color_codes.join(', ')}" style="font-size:13px;opacity:.85">🎨</span>`:''}</span>
           <span class="badge ${bc}">${bl}</span>
         </div>
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
@@ -1094,6 +1098,99 @@ function productMatchesSearch(p, q) {
   return tokens.every(t => haystack.includes(t));
 }
 
+// Normaliseer kleurcodes naar consistente vorm. Zelfde regels als in factuur-matcher
+// zodat alle kleuren overal in dezelfde spelling staan.
+function normalizeColor(raw) {
+  const s = (raw||'').trim();
+  if(!s) return '';
+  // 1. Pure 4-cijferige RAL: "9010" → "RAL 9010"
+  if(/^\d{4}$/.test(s)) return 'RAL ' + s;
+  // 2. RAL met variërende spaties/case: "Ral 3007", "ral3007" → "RAL 3007"
+  let m = s.match(/^[Rr][Aa][Ll]\s*(\d{3,4})$/);
+  if(m) return 'RAL ' + m[1];
+  // 3. NCS-achtige codes (X0.00.00 / X.00.00): hoofdletter voorop
+  if(/^[A-Za-z]\d?\.\d{2}\.\d{2}$/.test(s)) return s.charAt(0).toUpperCase() + s.slice(1);
+  // 4. Sikkens-eigen codes (GY1281-2514, etc): laat staan
+  if(/^[A-Z]{1,3}\d{2,4}-\d{3,4}$/.test(s)) return s;
+  // 5. 3-cijferige Cetol/houtkleur codes (085): laat staan
+  if(/^\d{3}$/.test(s)) return s;
+  // 6. Vrije tekst → Title Case
+  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function addColorCode(productId) {
+  const input = document.getElementById('color-input-' + productId);
+  if(!input) return;
+  const raw = input.value;
+  const normalized = normalizeColor(raw);
+  if(!normalized) { input.focus(); return; }
+  const p = db.products.find(x=>x.id===productId);
+  if(!p) return;
+  const current = Array.isArray(p.color_codes) ? p.color_codes : [];
+  if(current.includes(normalized)) {
+    // Stille no-op bij duplicaat — wel input legen + visueel signaleren
+    input.value = '';
+    input.style.background = '#fef3c7';
+    setTimeout(()=>{input.style.background=''; }, 600);
+    return;
+  }
+  const next = [...current, normalized].sort();
+  try {
+    await dbPatch('products', `id=eq.${productId}`, { color_codes: next });
+    p.color_codes = next;
+    input.value = '';
+    rerenderProductDetail(productId);
+  } catch(e) {
+    console.error('Kleurcode toevoegen mislukt:', e);
+    alert('Kleurcode toevoegen mislukt: ' + (e.message||e));
+  }
+}
+
+async function removeColorCode(productId, color) {
+  const p = db.products.find(x=>x.id===productId);
+  if(!p) return;
+  const current = Array.isArray(p.color_codes) ? p.color_codes : [];
+  const next = current.filter(c => c !== color);
+  try {
+    await dbPatch('products', `id=eq.${productId}`, { color_codes: next });
+    p.color_codes = next;
+    rerenderProductDetail(productId);
+  } catch(e) {
+    console.error('Kleurcode verwijderen mislukt:', e);
+    alert('Kleurcode verwijderen mislukt: ' + (e.message||e));
+  }
+}
+
+function rerenderProductDetail(productId) {
+  // Re-render alleen het kleur-blok, niet de hele modal (anders verlies je scroll-positie)
+  const block = document.getElementById('color-block-' + productId);
+  if(block) block.outerHTML = renderColorBlock(productId);
+  // En als de modal open is, ook de stocklijst eronder bijwerken (voor 🎨 indicator)
+  if(document.getElementById('stock-list')) renderStock();
+}
+
+function renderColorBlock(productId) {
+  const p = db.products.find(x=>x.id===productId);
+  if(!p) return '';
+  const codes = Array.isArray(p.color_codes) ? p.color_codes : [];
+  const chips = codes.map(c => `
+    <span class="color-chip">
+      ${c.replace(/</g,'&lt;')}
+      <span class="color-chip-x" onclick="removeColorCode(${productId}, '${c.replace(/'/g,"\\'")}')">×</span>
+    </span>`).join('');
+  return `<div id="color-block-${productId}" style="margin-bottom:14px">
+    <div class="card-sub" style="margin-bottom:6px">🎨 Kleurcodes${codes.length?` (${codes.length})`:''}</div>
+    ${codes.length ? `<div class="color-chips">${chips}</div>` : ''}
+    <div style="display:flex;gap:6px;margin-top:${codes.length?'8px':'0'}">
+      <input id="color-input-${productId}" type="text" placeholder="bv. 9010, RAL 7021, Preference Red"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addColorCode(${productId})}"
+        style="flex:1;font-size:14px;padding:8px 12px">
+      <button class="btn btn-secondary" style="padding:8px 14px;flex:0 0 auto"
+        onclick="addColorCode(${productId})">+</button>
+    </div>
+  </div>`;
+}
+
 function filterIssueProducts() {
   const q=document.getElementById('issue-search').value;
   const filtered=issueProducts.filter(p=>productMatchesSearch(p, q));
@@ -1215,6 +1312,7 @@ function openProductDetail(id) {
     </div>
     <div class="card-sub" style="margin-bottom:6px">Categorie: ${p.cat} · Min: ${p.min} ${p.unit} · €${p.price}/${p.unit}</div>
     ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
+    ${renderColorBlock(p.id)}
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-detail');openProductModal(${p.id})">✏️ Bewerken</button>
       <button class="btn btn-secondary" onclick="closeModal('modal-detail');duplicateProduct(${p.id})">⧉ Dupliceer</button>
