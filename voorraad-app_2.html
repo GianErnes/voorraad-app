@@ -100,6 +100,7 @@
   .sup-block-body{padding:0 14px;}
   .sup-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
   .sup-row:last-of-type{border-bottom:none;}
+  .sup-row.ordered{opacity:.65;background:rgba(76,175,125,.06);}
   .sup-block-footer{padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;}
   .cat-tag{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);}
   .cat-tag:last-child{border-bottom:none;}
@@ -510,7 +511,7 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[]}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
     setSyncing('ok');
@@ -545,6 +546,21 @@ function orderQty(p) {
   const tekort=target-p.qty;
   if(tekort<=0) return 0;
   return Math.ceil(tekort/pack)*pack;
+}
+function workdaysSince(iso) {
+  if(!iso) return Infinity;
+  const then=new Date(iso); if(isNaN(then.getTime())) return Infinity;
+  const cur=new Date(then); cur.setHours(0,0,0,0);
+  const end=new Date(); end.setHours(0,0,0,0);
+  let days=0;
+  while(cur<end) { cur.setDate(cur.getDate()+1); const d=cur.getDay(); if(d!==0&&d!==6) days++; }
+  return days;
+}
+function isOrderActive(p) { return p.last_ordered_at && workdaysSince(p.last_ordered_at) < 10; }
+function fmtOrderedDate(iso) {
+  if(!iso) return '';
+  const d=new Date(iso); if(isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
 }
 function stockStatus(p) {
   const r=p.qty/Math.max(p.min,0.001);
@@ -687,14 +703,16 @@ function renderOrders() {
     db.suppliers.forEach(s=>{
       const items=needed.filter(p=>p.supplier===s.id);
       if(!items.length) return;
+      const orderedCount=items.filter(isOrderActive).length;
+      const allOrdered=orderedCount===items.length;
       html+=`<div class="sup-block">
         <div class="sup-block-hdr">
           <div class="sup-block-hdr-name">${s.name}</div>
-          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''}</div>
+          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''}${orderedCount?` · <span style="color:var(--green)">${orderedCount} besteld</span>`:''}</div>
         </div>
         <div class="sup-block-body">
-          ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;return `<div class="sup-row">
-            <div><div style="font-weight:500;font-size:14px">${orderName(p)}</div>
+          ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;const ordered=isOrderActive(p);return `<div class="sup-row${ordered?' ordered':''}">
+            <div><div style="font-weight:500;font-size:14px">${orderName(p)}${ordered?` <span class="badge badge-ok" style="margin-left:6px">✓ besteld ${fmtOrderedDate(p.last_ordered_at)}</span>`:''}</div>
             <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
             <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
             ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
@@ -703,8 +721,9 @@ function renderOrders() {
         </div>
         <div class="sup-block-footer">
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="exportSupOrder(${s.id})">📤 Exporteer</button>
-          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="waSupOrder(${s.id})">💬 WhatsApp</button>
+          <button class="btn ${allOrdered?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:7px 12px" onclick="markSupOrdered(${s.id})">${allOrdered?'↩️ Reset':'✓ Markeer besteld'}</button>
+          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>
           <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 Bel</a>
         </div>
       </div>`;
@@ -771,6 +790,17 @@ function waSupOrder(supId) {
   let phone=r.s.phone.replace(/\s/g,'');
   if(phone.startsWith('0')) phone='31'+phone.slice(1);
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(r.txt)}`,'_blank');
+}
+async function markSupOrdered(supId) {
+  const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
+  if(!items.length) return;
+  const allOrdered=items.every(isOrderActive);
+  setSyncing('syncing');
+  const newVal=allOrdered?null:new Date().toISOString();
+  for(const p of items) {
+    await dbPatch('products', `id=eq.${p.id}`, {last_ordered_at:newVal});
+  }
+  await loadAll();
 }
 function shareOrCopy(txt,title) {
   if(navigator.share) { navigator.share({title,text:txt}).catch(()=>showExportModal(txt,title)); return; }
@@ -861,7 +891,7 @@ async function applyReceive(scope) {
     if(qty<=0) continue;
     const p=db.products.find(x=>x.id===id); if(!p) continue;
     const newQty=Math.round((p.qty+qty)*1000)/1000;
-    await dbPatch('products', `id=eq.${id}`, {qty: newQty});
+    await dbPatch('products', `id=eq.${id}`, {qty: newQty, last_ordered_at: null});
     await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today()});
   }
   await loadAll();
