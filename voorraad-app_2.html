@@ -1,5 +1,44 @@
 
 <!DOCTYPE html>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
+  ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
+  ║  Laatst gewijzigd: 2026-05-10                                        ║
+  ╠══════════════════════════════════════════════════════════════════════╣
+  ║                                                                      ║
+  ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
+  ║                                                                      ║
+  ║  VASTE FEATURES (mogen NIET wegvallen bij updates):                  ║
+  ║                                                                      ║
+  ║  • target/pack kolommen — streefvoorraad + verpakkingseenheid        ║
+  ║  • factuur_naam — leverancier-specifieke productnamen op bestellijst ║
+  ║  • last_ordered_at — bestelmarkering met 10-werkdagen failsafe       ║
+  ║    └─ groene badge "✓ besteld DD-MM" in renderOrders                 ║
+  ║    └─ markSupOrdered() knop per leverancier                          ║
+  ║    └─ wordt gecleard in applyReceive() bij ontvangst                 ║
+  ║  • Leveranciers CRUD inclusief verplicht-reassign bij verwijderen    ║
+  ║  • History pagination via dbGetAll (chunks van 1000)                 ║
+  ║  • Drie-secties project-export                                       ║
+  ║    (verbruik / volledig retour / boekfouten)                         ║
+  ║  • Step 0.125 voor materiaal uitgeven                                ║
+  ║  • Decimalen + skip-knop in receive flow                             ║
+  ║  • color_codes array op products (kleurcodes per product)            ║
+  ║                                                                      ║
+  ║  VASTE INSTELLINGEN:                                                 ║
+  ║  • Pincode: 6422 (sessionStorage)                                    ║
+  ║  • Polling sync: 10 seconden                                         ║
+  ║  • Stijl: wit, accent #e63946, Inter + JetBrains Mono                ║
+  ║  • Step 0.125 + decimalen waar relevant                              ║
+  ║                                                                      ║
+  ║  PROCES BIJ WIJZIGINGEN:                                             ║
+  ║  1. Raak je een vaste feature aan? Motiveer waarom in changelog.     ║
+  ║  2. Validate JS-syntax voor je oplevert (new Function-test).         ║
+  ║  3. Check GitHub diff-view vóór commit op onverwachte rode regels.   ║
+  ║  4. Cache-bust: bump ?v=N op deploy-URL na elke wijziging.           ║
+  ║                                                                      ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
