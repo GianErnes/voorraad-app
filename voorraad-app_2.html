@@ -88,12 +88,8 @@
   hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
   .stepper{display:flex;align-items:center;gap:10px;}
   .stepper button{width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .stepper input{width:85px;text-align:center;}
+  .stepper input{width:60px;text-align:center;}
   .sup-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden;}
-  .sup-block-pending{background:var(--surface2);opacity:.85;}
-  .sup-block-hdr{background:var(--surface2);padding:12px 14px;border-bottom:1px solid var(--border);}
-  .sup-block-pending .sup-block-hdr{background:#eef3f8;}
-  .sup-section-lbl{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.5px;padding:10px 0 4px;border-bottom:1px solid var(--border);margin-bottom:4px;}
   .sup-block-hdr{background:var(--surface2);padding:12px 14px;border-bottom:1px solid var(--border);}
   .sup-block-hdr-name{font-weight:600;font-size:15px;}
   .sup-block-hdr-sub{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px;}
@@ -297,7 +293,7 @@
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper">
         <button onclick="stepIssueQty(-0.125)">−</button>
-        <input id="issue-qty" type="number" value="1" min="0.125" step="0.125" style="width:95px;text-align:center">
+        <input id="issue-qty" type="number" value="1" min="0.125" step="0.125" style="width:70px;text-align:center">
         <button onclick="stepIssueQty(0.125)">+</button>
         <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
       </div>
@@ -510,7 +506,7 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',last_ordered_at:r.last_ordered_at||null}));
+    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[]}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
     setSyncing('ok');
@@ -616,7 +612,7 @@ function renderStock() {
   const search=(document.getElementById('stock-search')||{}).value||'';
   let prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
   if(onlyWithMin) prods=prods.filter(p=>Number(p.min)>0);
-  if(search.trim()) prods=prods.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
+  if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
       const [bc,bl]=stockStatus(p);
@@ -676,23 +672,6 @@ function projCard(p) {
 }
 
 // ====================== ORDERS ======================
-const ORDER_STALE_DAYS = 10; // werkdagen na bestelling waarna alarm
-
-function rowHTML(p, isStale) {
-  const q=orderQty(p);
-  const packs=p.pack>1?Math.round(q/p.pack):0;
-  const stale=isStale?` <span style="color:var(--accent);font-size:11px">⚠️ controleren</span>`:'';
-  const ordered=p.last_ordered_at?`<div class="card-sub" style="font-size:11px;margin-top:2px">📨 Besteld op ${formatOrderedDate(p.last_ordered_at)} (${businessDaysSince(p.last_ordered_at)} werkdagen geleden)${stale}</div>`:'';
-  return `<div class="sup-row">
-    <div><div style="font-weight:500;font-size:14px">${orderName(p)}</div>
-    <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div>
-    ${ordered}</div>
-    <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:${isStale||!p.last_ordered_at?'var(--accent)':'var(--muted)'}">${q} ${p.unit}</div>
-    ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
-    </div>
-  </div>`;
-}
-
 function renderOrders() {
   const d=new Date();
   document.getElementById('order-week').textContent=`${getWeek(d)}, ${d.getFullYear()}`;
@@ -704,39 +683,25 @@ function renderOrders() {
     db.suppliers.forEach(s=>{
       const items=needed.filter(p=>p.supplier===s.id);
       if(!items.length) return;
-      // Splits in pending (besteld, < 10 werkdagen oud) en todo (niet besteld of stale)
-      const pending=[], todo=[];
-      items.forEach(p=>{
-        const dagen=p.last_ordered_at?businessDaysSince(p.last_ordered_at):null;
-        const isStale=dagen!==null&&dagen>ORDER_STALE_DAYS;
-        if(p.last_ordered_at && !isStale) pending.push(p);
-        else todo.push({...p, _stale:isStale});
-      });
-      const hasAny=pending.length||todo.length;
-      if(!hasAny) return;
-      const allOrdered=pending.length>0&&todo.length===0;
-      html+=`<div class="sup-block${allOrdered?' sup-block-pending':''}">
+      html+=`<div class="sup-block">
         <div class="sup-block-hdr">
           <div class="sup-block-hdr-name">${s.name}</div>
-          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''}${pending.length?` · ${pending.length} in afwachting`:''}</div>
+          <div class="sup-block-hdr-sub">${s.contact} · ${items.length} artikel${items.length>1?'en':''}</div>
         </div>
-        <div class="sup-block-body">`;
-      if(pending.length) {
-        html+=`<div class="sup-section-lbl">🕐 In afwachting van levering</div>`;
-        html+=pending.map(p=>rowHTML(p, false)).join('');
-      }
-      if(todo.length) {
-        if(pending.length) html+=`<div class="sup-section-lbl" style="color:var(--accent)">📋 Nog te bestellen</div>`;
-        html+=todo.map(p=>rowHTML(p, p._stale)).join('');
-      }
-      html+=`</div>
+        <div class="sup-block-body">
+          ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;return `<div class="sup-row">
+            <div><div style="font-weight:500;font-size:14px">${orderName(p)}</div>
+            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
+            <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
+            ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
+            </div>
+          </div>`;}).join('')}
+        </div>
         <div class="sup-block-footer">
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="exportSupOrder(${s.id})">📤 Exporteer</button>
           <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="waSupOrder(${s.id})">💬 WhatsApp</button>
-          <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="markSupplierOrdered(${s.id},true)">📞 Bel</a>
-          ${todo.length?`<button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="markSupplierOrdered(${s.id})">✓ Markeer besteld</button>`:''}
-          ${pending.length?`<button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="unmarkSupplierOrdered(${s.id})">↩ Annuleer markering</button>`:''}
+          <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 Bel</a>
         </div>
       </div>`;
     });
@@ -764,46 +729,6 @@ function orderName(p) {
   // Gebruik factuur_naam als die ingevuld is, anders gewone productnaam
   return (p.factuur_naam && p.factuur_naam.trim()) ? p.factuur_naam : p.name;
 }
-
-// ====================== BESTELMARKERING ======================
-function businessDaysSince(dateStr) {
-  if(!dateStr) return null;
-  const start=new Date(dateStr); const today=new Date();
-  if(isNaN(start.getTime())) return null;
-  let days=0;
-  const cur=new Date(start.getFullYear(),start.getMonth(),start.getDate()+1);
-  const end=new Date(today.getFullYear(),today.getMonth(),today.getDate());
-  while(cur<=end) {
-    const d=cur.getDay();
-    if(d!==0 && d!==6) days++;
-    cur.setDate(cur.getDate()+1);
-  }
-  return days;
-}
-function formatOrderedDate(dateStr) {
-  if(!dateStr) return '';
-  const d=new Date(dateStr);
-  return d.toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
-}
-async function markSupplierOrdered(supId, silent=false) {
-  const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId&&!p.last_ordered_at);
-  if(!items.length) { if(!silent) alert('Geen artikelen om te markeren.'); return; }
-  setSyncing('syncing');
-  const now=new Date().toISOString();
-  for(const p of items) {
-    await dbPatch('products',`id=eq.${p.id}`,{last_ordered_at:now});
-  }
-  await loadAll();
-}
-async function unmarkSupplierOrdered(supId) {
-  if(!confirm('Markering voor deze leverancier verwijderen?')) return;
-  setSyncing('syncing');
-  const items=db.products.filter(p=>p.supplier===supId&&p.last_ordered_at);
-  for(const p of items) {
-    await dbPatch('products',`id=eq.${p.id}`,{last_ordered_at:null});
-  }
-  await loadAll();
-}
 function buildOrderText(supId) {
   const s=db.suppliers.find(x=>x.id===supId);
   const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
@@ -821,7 +746,6 @@ function exportSupOrder(supId) {
   let txt=`BESTELLIJST – ${r.s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n${'─'.repeat(40)}\n${r.s.contact} | ${r.s.email} | ${r.s.phone}\n\n`;
   r.items.forEach(p=>{const q=orderQty(p);txt+=`${orderName(p).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
   shareOrCopy(txt,`Bestellijst ${r.s.name}`);
-  markSupplierOrdered(supId, true);
 }
 function exportAllOrders() {
   const needed=db.products.filter(p=>p.qty<p.min);
@@ -843,7 +767,6 @@ function waSupOrder(supId) {
   let phone=r.s.phone.replace(/\s/g,'');
   if(phone.startsWith('0')) phone='31'+phone.slice(1);
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(r.txt)}`,'_blank');
-  markSupplierOrdered(supId, true);
 }
 function shareOrCopy(txt,title) {
   if(navigator.share) { navigator.share({title,text:txt}).catch(()=>showExportModal(txt,title)); return; }
@@ -897,7 +820,7 @@ function recvRows(items,showSupplier=false) {
       </div>
       <div class="stepper">
         <button onclick="adjustRecv(this,-1)">−</button>
-        <input type="number" class="recv-qty" data-id="${p.id}" value="${suggest}" min="0" step="0.125" style="width:85px;text-align:center">
+        <input type="number" class="recv-qty" data-id="${p.id}" value="${suggest}" min="0" step="0.125" style="width:60px;text-align:center">
         <button onclick="adjustRecv(this,1)">+</button>
       </div>
       <button class="recv-skip" onclick="toggleRecvSkip(this)" title="Niet ontvangen">✕</button>
@@ -934,7 +857,7 @@ async function applyReceive(scope) {
     if(qty<=0) continue;
     const p=db.products.find(x=>x.id===id); if(!p) continue;
     const newQty=Math.round((p.qty+qty)*1000)/1000;
-    await dbPatch('products', `id=eq.${id}`, {qty: newQty, last_ordered_at: null});
+    await dbPatch('products', `id=eq.${id}`, {qty: newQty});
     await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today()});
   }
   await loadAll();
@@ -1155,9 +1078,25 @@ function renderIssueProductList(prods) {
     </div>`).join('');
 }
 
+// Zoekt in productnaam, factuur-naam en kleurcodes — multi-token (AND)
+// Bijvoorbeeld "uniprimer 9010" matcht een product met name "Sikkens Uniprimer"
+// EN color_codes ['RAL 9010', ...]. Elke token moet ergens matchen.
+function productMatchesSearch(p, q) {
+  const query = (q||'').toLowerCase().trim();
+  if(!query) return true;
+  const tokens = query.split(/\s+/).filter(t=>t.length>=1);
+  // Bouw één doorzoekbare string per product
+  const haystack = [
+    p.name||'',
+    p.factuur_naam||'',
+    (Array.isArray(p.color_codes) ? p.color_codes.join(' ') : '')
+  ].join(' ').toLowerCase();
+  return tokens.every(t => haystack.includes(t));
+}
+
 function filterIssueProducts() {
-  const q=document.getElementById('issue-search').value.toLowerCase();
-  const filtered=issueProducts.filter(p=>p.name.toLowerCase().includes(q));
+  const q=document.getElementById('issue-search').value;
+  const filtered=issueProducts.filter(p=>productMatchesSearch(p, q));
   renderIssueProductList(filtered);
 }
 
