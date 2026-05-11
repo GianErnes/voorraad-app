@@ -24,6 +24,10 @@
   ║  • Step 0.125 voor materiaal uitgeven                                ║
   ║  • Decimalen + skip-knop in receive flow                             ║
   ║  • color_codes array op products (kleurcodes per product)            ║
+  ║  • employee_name op history — wie heeft de boeking gedaan            ║
+  ║    └─ employees tabel met CRUD via instellingen                      ║
+  ║    └─ sessieKeuze na pincode (modal-employee)                        ║
+  ║    └─ wisselbare badge "👤 naam" rechtsboven in header               ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Pincode: 6422 (sessionStorage)                                    ║
@@ -198,6 +202,9 @@
 <div class="header">
   <h1 id="page-title">Dashboard</h1>
   <p id="page-sub">Voorraadoverzicht <span class="sync-dot" id="sync-dot" title="Synchronisatiestatus"></span></p>
+  <div id="emp-badge" onclick="openEmployeePicker(false)" style="position:absolute;top:16px;right:16px;display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--card);padding:6px 10px;border:1px solid var(--border);border-radius:16px;cursor:pointer;">
+    <span>👤</span><span id="emp-badge-name">—</span><span style="font-size:9px;opacity:.6">▼</span>
+  </div>
 </div>
 
 <div class="content">
@@ -250,6 +257,15 @@
       <div style="display:flex;gap:8px;margin-top:14px">
         <input id="new-cat-input" placeholder="Nieuwe categorie…" style="flex:1">
         <button class="btn btn-primary" onclick="addCategory()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
+      </div>
+    </div>
+    <div class="section-hdr">Medewerkers beheren</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Bij elke uitgifte/retour wordt geregistreerd wie het heeft geboekt.</p>
+      <div id="emp-settings-list"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <input id="new-emp-settings-input" placeholder="Nieuwe medewerker…" style="flex:1">
+        <button class="btn btn-primary" onclick="addEmployeeFromSettings()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
     </div>
   </div>
@@ -314,6 +330,18 @@
     <div class="form-group"><label>KLANT</label><input id="pr-client" placeholder="Naam klant"></div>
     <div class="form-group"><label>STARTDATUM</label><input id="pr-date" type="date"></div>
     <button class="btn btn-primary btn-full" id="btn-save-project" onclick="saveProject()">Aanmaken</button>
+  </div>
+</div>
+<!-- EMPLOYEE PICKER -->
+<div class="modal-overlay" id="modal-employee">
+  <div class="modal">
+    <div class="modal-title"><span id="emp-modal-title">Wie ben jij vandaag?</span><span class="modal-close" id="emp-modal-close" onclick="closeModal('modal-employee')">×</span></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Kies je naam — wordt automatisch geboekt bij elke uitgifte en retour.</p>
+    <div id="emp-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:14px">
+      <input id="new-emp-input" placeholder="Nieuwe medewerker…" style="flex:1">
+      <button class="btn btn-primary" onclick="addEmployeeAndPick()" style="margin-top:0;white-space:nowrap">+ Toevoegen</button>
+    </div>
   </div>
 </div>
 <!-- ISSUE MATERIAL -->
@@ -428,11 +456,13 @@
 // ====================== PINCODE BEVEILIGING ======================
 const CORRECT_PIN = '6422'; // ← Verander dit naar jullie eigen pincode
 const SESSION_KEY = 'ernes_unlocked';
+const EMPLOYEE_KEY = 'ernes_employee';
 let pinEntry = '';
 
 function initSecurity() {
   if(sessionStorage.getItem(SESSION_KEY) === 'yes') {
     document.getElementById('pin-screen').style.display='none';
+    // pincode al ingevoerd; employee check gebeurt na loadAll() zodra db.employees binnen is
   }
 }
 
@@ -461,6 +491,7 @@ function checkPin() {
   if(pinEntry === CORRECT_PIN) {
     sessionStorage.setItem(SESSION_KEY,'yes');
     document.getElementById('pin-screen').style.display='none';
+    checkEmployee();
   } else {
     document.getElementById('pin-error').textContent='Onjuiste pincode, probeer opnieuw';
     pinEntry='';
@@ -470,6 +501,63 @@ function checkPin() {
     dots.style.animation='shake .3s';
     setTimeout(()=>dots.style.animation='',300);
   }
+}
+
+// ====================== MEDEWERKER-KEUZE ======================
+function getCurrentEmployee() { return sessionStorage.getItem(EMPLOYEE_KEY) || ''; }
+function setCurrentEmployee(name) {
+  if(name) sessionStorage.setItem(EMPLOYEE_KEY, name);
+  else sessionStorage.removeItem(EMPLOYEE_KEY);
+  renderEmployeeBadge();
+}
+function renderEmployeeBadge() {
+  const cur=getCurrentEmployee();
+  const badge=document.getElementById('emp-badge');
+  if(!badge) return;
+  if(cur) {
+    document.getElementById('emp-badge-name').textContent=cur;
+    badge.style.display='inline-flex';
+  } else {
+    badge.style.display='none';
+  }
+}
+function checkEmployee() {
+  // Wordt aangeroepen na pin-unlock en na loadAll().
+  // Toont picker als nog geen medewerker is gekozen voor deze sessie.
+  if(!getCurrentEmployee()) {
+    openEmployeePicker(true);
+  } else {
+    renderEmployeeBadge();
+  }
+}
+function openEmployeePicker(required) {
+  const list=document.getElementById('emp-list');
+  const active=(db.employees||[]).filter(e=>e.active);
+  if(active.length) {
+    list.innerHTML=active.map(e=>`<button class="btn btn-secondary btn-full" style="margin-top:0;justify-content:flex-start" onclick="pickEmployee('${e.name.replace(/'/g,"\\'")}')">👤 ${e.name}</button>`).join('');
+  } else {
+    list.innerHTML='<div class="empty" style="padding:8px 0">Nog geen medewerkers — voeg er een toe ↓</div>';
+  }
+  document.getElementById('new-emp-input').value='';
+  document.getElementById('emp-modal-close').style.display=required?'none':'inline';
+  document.getElementById('emp-modal-title').textContent=required?'Wie ben jij vandaag?':'Wissel van medewerker';
+  openModal('modal-employee');
+}
+function pickEmployee(name) {
+  setCurrentEmployee(name);
+  closeModal('modal-employee');
+}
+async function addEmployeeAndPick() {
+  const inp=document.getElementById('new-emp-input');
+  const name=inp.value.trim(); if(!name) return;
+  if((db.employees||[]).some(e=>e.name.toLowerCase()===name.toLowerCase())) {
+    pickEmployee((db.employees.find(e=>e.name.toLowerCase()===name.toLowerCase())).name);
+    return;
+  }
+  setSyncing('syncing');
+  await dbPost('employees', {name, active:true});
+  await loadAll();
+  pickEmployee(name);
 }
 
 // Voeg shake animatie toe
@@ -530,7 +618,7 @@ async function dbDelete(table, match) {
 }
 
 // ====================== LOCAL STATE ======================
-let db = { categories:[], suppliers:[], products:[], projects:[], history:[] };
+let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[] };
 
 function setSyncing(state) {
   const dot = document.getElementById('sync-dot');
@@ -541,21 +629,24 @@ function setSyncing(state) {
 async function loadAll() {
   setSyncing('syncing');
   try {
-    const [cats, sups, prods, projs, hist] = await Promise.all([
+    const [cats, sups, prods, projs, hist, emps] = await Promise.all([
       dbGet('categories', 'order=name.asc'),
       dbGet('suppliers',  'order=name.asc'),
       dbGetAll('products', 'order=name.asc'),
       dbGet('projects',   'order=date.desc'),
       dbGetAll('history',  'order=created_at.desc'),
+      dbGet('employees',  'order=name.asc'),
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
     db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
-    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||''}));
+    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||''}));
+    db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false}));
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
+    checkEmployee();
   } catch(e) {
     console.error('Laad fout:', e);
     setSyncing('error');
@@ -655,9 +746,10 @@ function renderDashboard() {
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
       const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
+      const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item"><div class="hist-dot ${h.type}"></div>
         <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${proj?' → '+proj.name:''}</div>
-        <div class="hist-date">${h.date}${h.note?' · '+h.note:''}</div></div></div>`;
+        <div class="hist-date">${meta}</div></div></div>`;
     }).join('');
 }
 
@@ -705,7 +797,7 @@ async function quickQty(id, delta) {
   p.qty=newQty;
   renderStock();
   await dbPatch('products', `id=eq.${id}`, {qty:newQty});
-  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today()});
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today(), employee_name:getCurrentEmployee()||null});
 }
 
 // ====================== PROJECTS ======================
@@ -931,7 +1023,7 @@ async function applyReceive(scope) {
     const p=db.products.find(x=>x.id===id); if(!p) continue;
     const newQty=Math.round((p.qty+qty)*1000)/1000;
     await dbPatch('products', `id=eq.${id}`, {qty: newQty, last_ordered_at: null});
-    await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today()});
+    await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today(),employee_name:getCurrentEmployee()||null});
   }
   await loadAll();
 }
@@ -1378,7 +1470,7 @@ async function confirmIssue() {
   const newQty=Math.round((prod.qty+(issueMode==='out'?-qty:qty))*100)/100;
   setSyncing('syncing');
   await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
-  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today()});
+  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null});
   await loadAll();
 
   // Modal blijft open — reset product, project blijft staan
@@ -1464,8 +1556,9 @@ function openProjDetail(id) {
     <div class="section-hdr">Materiaalverbruik</div>
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
+      const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:''].filter(Boolean).join(' · ');
       return `<div class="proj-item">
-        <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${h.date} · ${h.type==='out'?'Uitgegeven':'Retour'}</div></div>
+        <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${meta}</div></div>
         <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
           ${h.type==='out'?'-':'+'}${h.qty} ${pr?pr.unit:''}</div>
       </div>`;
@@ -1549,6 +1642,52 @@ function renderSettings() {
       <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editCategory(${i})">✏️</button>
       <button class="cat-del" onclick="deleteCategory(${i})">×</button>
     </div>`).join('');
+  const empEl=document.getElementById('emp-settings-list');
+  if(empEl) {
+    const emps=db.employees||[];
+    empEl.innerHTML=emps.length===0?'<div class="empty" style="padding:10px 0">Nog geen medewerkers</div>':
+      emps.map(e=>`<div class="cat-tag" style="${e.active?'':'opacity:.5'}">
+        <span class="cat-name">👤 ${e.name}${e.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
+        <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editEmployee(${e.id})">✏️</button>
+        <button class="cat-del" onclick="toggleEmployeeActive(${e.id})" title="${e.active?'Op inactief zetten':'Heractiveren'}">${e.active?'⊘':'↺'}</button>
+        <button class="cat-del" onclick="deleteEmployee(${e.id})">×</button>
+      </div>`).join('');
+  }
+}
+
+async function addEmployeeFromSettings() {
+  const inp=document.getElementById('new-emp-settings-input');
+  const name=inp.value.trim(); if(!name) return;
+  if((db.employees||[]).some(e=>e.name.toLowerCase()===name.toLowerCase())) { alert('Bestaat al.'); return; }
+  setSyncing('syncing');
+  await dbPost('employees', {name, active:true});
+  inp.value='';
+  await loadAll(); renderSettings();
+}
+async function editEmployee(id) {
+  const e=(db.employees||[]).find(x=>x.id===id); if(!e) return;
+  const newName=prompt('Naam aanpassen:', e.name);
+  if(!newName||newName.trim()===''||newName===e.name) return;
+  if((db.employees||[]).some(x=>x.id!==id && x.name.toLowerCase()===newName.toLowerCase())) { alert('Bestaat al.'); return; }
+  setSyncing('syncing');
+  await dbPatch('employees', `id=eq.${id}`, {name:newName.trim()});
+  // Update sessionStorage als 't de huidige medewerker is
+  if(getCurrentEmployee()===e.name) setCurrentEmployee(newName.trim());
+  await loadAll(); renderSettings();
+}
+async function toggleEmployeeActive(id) {
+  const e=(db.employees||[]).find(x=>x.id===id); if(!e) return;
+  setSyncing('syncing');
+  await dbPatch('employees', `id=eq.${id}`, {active:!e.active});
+  await loadAll(); renderSettings();
+}
+async function deleteEmployee(id) {
+  const e=(db.employees||[]).find(x=>x.id===id); if(!e) return;
+  if(!confirm(`Medewerker "${e.name}" verwijderen?\n\nLet op: historische boekingen blijven bewaard met de naam erin — alleen de keuze in dropdown verdwijnt.`)) return;
+  setSyncing('syncing');
+  await dbDelete('employees', `id=eq.${id}`);
+  if(getCurrentEmployee()===e.name) setCurrentEmployee('');
+  await loadAll(); renderSettings();
 }
 
 async function editCategory(idx) {
