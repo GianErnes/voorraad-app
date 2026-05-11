@@ -309,11 +309,11 @@
 <!-- ADD PROJECT -->
 <div class="modal-overlay" id="modal-project">
   <div class="modal">
-    <div class="modal-title">Nieuw project<span class="modal-close" onclick="closeModal('modal-project')">×</span></div>
+    <div class="modal-title"><span id="modal-project-title-text">Nieuw project</span><span class="modal-close" onclick="closeModal('modal-project')">×</span></div>
     <div class="form-group"><label>PROJECTNAAM</label><input id="pr-name" placeholder="bv. Kantoor Visserstraat"></div>
     <div class="form-group"><label>KLANT</label><input id="pr-client" placeholder="Naam klant"></div>
     <div class="form-group"><label>STARTDATUM</label><input id="pr-date" type="date"></div>
-    <button class="btn btn-primary btn-full" onclick="saveProject()">Aanmaken</button>
+    <button class="btn btn-primary btn-full" id="btn-save-project" onclick="saveProject()">Aanmaken</button>
   </div>
 </div>
 <!-- ISSUE MATERIAL -->
@@ -416,7 +416,7 @@
   <div class="modal">
     <div class="modal-title">Actie kiezen<span class="modal-close" onclick="closeModal('modal-fab')">×</span></div>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProductModal()">📦 Product toevoegen</button>
-    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openModal('modal-project');document.getElementById('pr-date').value=today()">🏗️ Nieuw project</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProjectAdd()">🏗️ Nieuw project</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
     <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openSupplierAdd()">🏢 Leverancier toevoegen</button>
@@ -1017,11 +1017,44 @@ async function deleteProduct() {
 }
 
 // ====================== PROJECT CRUD ======================
+let editingProjectId=null;
+
+function openProjectAdd() {
+  editingProjectId=null;
+  document.getElementById('modal-project-title-text').textContent='Nieuw project';
+  document.getElementById('btn-save-project').textContent='Aanmaken';
+  ['pr-name','pr-client'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pr-date').value=today();
+  openModal('modal-project');
+}
+
+function editProject(id) {
+  const p=db.projects.find(x=>x.id===id); if(!p) return;
+  editingProjectId=id;
+  document.getElementById('modal-project-title-text').textContent='Project bewerken';
+  document.getElementById('btn-save-project').textContent='Opslaan';
+  document.getElementById('pr-name').value=p.name||'';
+  document.getElementById('pr-client').value=p.client||'';
+  document.getElementById('pr-date').value=p.date||today();
+  closeModal('modal-detail');
+  openModal('modal-project');
+}
+
 async function saveProject() {
   const name=document.getElementById('pr-name').value.trim(); if(!name) return;
+  const data={
+    name,
+    client:document.getElementById('pr-client').value,
+    date:document.getElementById('pr-date').value||today()
+  };
   setSyncing('syncing');
-  await dbPost('projects', {name,client:document.getElementById('pr-client').value,date:document.getElementById('pr-date').value||today(),status:'actief'});
+  if(editingProjectId) {
+    await dbPatch('projects', `id=eq.${editingProjectId}`, data);
+  } else {
+    await dbPost('projects', {...data, status:'actief'});
+  }
   closeModal('modal-project');
+  editingProjectId=null;
   ['pr-name','pr-client'].forEach(id=>document.getElementById(id).value='');
   await loadAll();
 }
@@ -1425,6 +1458,7 @@ function openProjDetail(id) {
         ? `<button class="btn btn-green" style="flex:1;justify-content:center" onclick="closeProject(${p.id})">✅ Afronden</button>`
         : `<button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="reopenProject(${p.id})">🔄 Heropenen</button>`
       }
+      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="editProject(${p.id})">✏️ Bewerken</button>
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProject(${p.id})">📤 Exporteer</button>
     </div>
     <div class="section-hdr">Materiaalverbruik</div>
