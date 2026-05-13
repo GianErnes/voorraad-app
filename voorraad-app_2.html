@@ -4,7 +4,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Laatst gewijzigd: 2026-05-10                                        ║
+  ║  Versie: 2.0.0 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-13                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -32,6 +33,15 @@
   ║    └─ tik op item in dashboard / project-detail / product-historie   ║
   ║    └─ voorraad-impact wordt automatisch teruggerold + opnieuw        ║
   ║    └─ historyStockDelta() helper: out=-, in=+, order=+               ║
+  ║  • Project verplicht bij uitgifte (out)                              ║
+  ║    └─ validatie in confirmIssue: !projId blokkeert 'out'             ║
+  ║    └─ retour (in) blijft optioneel — terug naar algemene voorraad    ║
+  ║    └─ ⚠️ marker op verdwaalde 'out' regels in dashboard              ║
+  ║  • Versie-indicator (APP_VERSION + BUILD_DATE)                       ║
+  ║    └─ zichtbaar in header onder titel                                ║
+  ║    └─ welkomstkaart op dashboard bij nieuwe versie (localStorage)    ║
+  ║    └─ App-info sectie in instellingen onderaan                       ║
+  ║    └─ CHANGELOG_HTML constante voor "Wat is nieuw"                   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Pincode: 6422 (sessionStorage)                                    ║
@@ -41,9 +51,10 @@
   ║                                                                      ║
   ║  PROCES BIJ WIJZIGINGEN:                                             ║
   ║  1. Raak je een vaste feature aan? Motiveer waarom in changelog.     ║
-  ║  2. Validate JS-syntax voor je oplevert (new Function-test).         ║
-  ║  3. Check GitHub diff-view vóór commit op onverwachte rode regels.   ║
-  ║  4. Cache-bust: bump ?v=N op deploy-URL na elke wijziging.           ║
+  ║  2. Bij elke release: bump APP_VERSION + BUILD_DATE + CHANGELOG_HTML.║
+  ║  3. Validate JS-syntax voor je oplevert (new Function-test).         ║
+  ║  4. Check GitHub diff-view vóór commit op onverwachte rode regels.   ║
+  ║  5. Cache-bust: bump ?v=N op deploy-URL na elke wijziging.           ║
   ║                                                                      ║
   ╚══════════════════════════════════════════════════════════════════════╝
 -->
@@ -208,6 +219,7 @@
 <div class="header">
   <h1 id="page-title">Dashboard</h1>
   <p id="page-sub">Voorraadoverzicht <span class="sync-dot" id="sync-dot" title="Synchronisatiestatus"></span></p>
+  <div id="app-version-tag" style="font-size:10px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;letter-spacing:.3px"></div>
   <div id="emp-badge" onclick="openEmployeePicker(false)" style="position:absolute;top:16px;right:16px;display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--card);padding:6px 10px;border:1px solid var(--border);border-radius:16px;cursor:pointer;">
     <span>👤</span><span id="emp-badge-name">—</span><span style="font-size:9px;opacity:.6">▼</span>
   </div>
@@ -215,6 +227,10 @@
 
 <div class="content">
   <div class="page active" id="page-dashboard" style="padding-bottom:160px">
+    <div id="welcome-card" style="display:none;border:1px solid var(--accent);border-left:4px solid var(--accent);background:var(--surface);border-radius:8px;padding:16px;margin-bottom:16px;position:relative">
+      <button onclick="dismissWelcome()" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;line-height:1">×</button>
+      <div id="welcome-card-body" style="font-size:13px;color:var(--text);line-height:1.55;padding-right:20px"></div>
+    </div>
     <div class="stat-grid" id="stat-grid"></div>
     <div class="section-hdr">⚠️ Laag op voorraad</div>
     <div id="low-stock-list"></div>
@@ -273,6 +289,12 @@
         <input id="new-emp-settings-input" placeholder="Nieuwe medewerker…" style="flex:1">
         <button class="btn btn-primary" onclick="addEmployeeFromSettings()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
+    </div>
+    <div class="section-hdr">App-info</div>
+    <div class="card">
+      <div style="font-size:13px;color:var(--text);margin-bottom:4px"><strong id="app-info-version">Versie —</strong></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px" id="app-info-build">Build —</div>
+      <button class="btn btn-secondary btn-full" onclick="showChangelog()" style="margin-top:0">📋 Wat is nieuw</button>
     </div>
   </div>
 </div>
@@ -484,6 +506,18 @@
 </div>
 
 <script>
+// ====================== VERSIE-INFO ======================
+const APP_VERSION = '2.0.0';
+const BUILD_DATE = '2026-05-13';
+const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
+const CHANGELOG_HTML = `
+  <strong>Welkom bij v${APP_VERSION}</strong> — een grote update met vijf nieuwe functies:<br><br>
+  • <strong>Naamregistratie</strong> — kies bij opstart je naam, elke boeking wordt automatisch op jouw naam gezet (te wisselen via de badge rechtsboven).<br>
+  • <strong>Boeking corrigeren</strong> — tik op een geboekte regel om aantal, project of product aan te passen, of de regel te verwijderen. De voorraad wordt automatisch netjes teruggerold.<br>
+  • <strong>Project bewerken</strong> — fout gespelde projectnaam? Pas 'm aan via de bewerk-knop in het projectdetail.<br>
+  • <strong>Bestelmarkering</strong> — per leverancier markeer je in één tik welke artikelen besteld zijn. Vervalt automatisch na 10 werkdagen.<br>
+  • <strong>Veiliger uitgeven</strong> — bij uitgifte is een project nu verplicht. Geen materiaal meer dat in het niets verdwijnt.
+`;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
 const CORRECT_PIN = '6422'; // ← Verander dit naar jullie eigen pincode
@@ -1984,7 +2018,35 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
 });
 
+// ====================== VERSIE-INDICATOR + WELKOMSTKAART ======================
+function showChangelog() {
+  document.getElementById('welcome-card-body').innerHTML=CHANGELOG_HTML;
+  document.getElementById('welcome-card').style.display='block';
+  setPage('dashboard');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function dismissWelcome() {
+  document.getElementById('welcome-card').style.display='none';
+  try { localStorage.setItem(WELCOME_KEY,'1'); } catch(e) {}
+}
+function initVersionIndicator() {
+  const tag=document.getElementById('app-version-tag');
+  if(tag) tag.textContent='v'+APP_VERSION+' · '+BUILD_DATE;
+  const info=document.getElementById('app-info-version');
+  if(info) info.textContent='Versie '+APP_VERSION;
+  const build=document.getElementById('app-info-build');
+  if(build) build.textContent='Build '+BUILD_DATE;
+  // Welkomstkaart bij nieuwe versie
+  let seen=false;
+  try { seen=localStorage.getItem(WELCOME_KEY)==='1'; } catch(e) {}
+  if(!seen) {
+    document.getElementById('welcome-card-body').innerHTML=CHANGELOG_HTML;
+    document.getElementById('welcome-card').style.display='block';
+  }
+}
+
 initSecurity();
+initVersionIndicator();
 loadAll();
 setupRealtime();
 </script>
