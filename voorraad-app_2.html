@@ -28,6 +28,10 @@
   ║    └─ employees tabel met CRUD via instellingen                      ║
   ║    └─ sessieKeuze na pincode (modal-employee)                        ║
   ║    └─ wisselbare badge "👤 naam" rechtsboven in header               ║
+  ║  • History-regel bewerken/verwijderen                                ║
+  ║    └─ tik op item in dashboard / project-detail / product-historie   ║
+  ║    └─ voorraad-impact wordt automatisch teruggerold + opnieuw        ║
+  ║    └─ historyStockDelta() helper: out=-, in=+, order=+               ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Pincode: 6422 (sessionStorage)                                    ║
@@ -116,8 +120,9 @@
   .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
   .stat-val{font-size:26px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--accent);}
   .stat-lbl{font-size:11px;color:var(--muted);margin-top:4px;}
-  .proj-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+  .proj-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
   .proj-item:last-child{border-bottom:none;}
+  .proj-item:active{background:var(--surface2);}
   .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
   .chip{padding:6px 14px;border-radius:20px;font-size:13px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;transition:all .15s;white-space:nowrap;}
   .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -127,7 +132,8 @@
   .color-chip-x:hover{background:var(--red);color:#fff;}
   .action-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
   .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;}
-  .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
+  .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
+  .hist-item:active{background:var(--surface2);}
   .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
   .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}
   .hist-text{font-size:13px;}
@@ -341,6 +347,32 @@
     <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:14px">
       <input id="new-emp-input" placeholder="Nieuwe medewerker…" style="flex:1">
       <button class="btn btn-primary" onclick="addEmployeeAndPick()" style="margin-top:0;white-space:nowrap">+ Toevoegen</button>
+    </div>
+  </div>
+</div>
+<!-- HISTORY EDIT -->
+<div class="modal-overlay" id="modal-history">
+  <div class="modal">
+    <div class="modal-title">Boeking corrigeren<span class="modal-close" onclick="closeModal('modal-history')">×</span></div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px">⚠️ Voorraad wordt automatisch aangepast aan de wijziging.</p>
+    <input type="hidden" id="hist-edit-id">
+    <input type="hidden" id="hist-edit-employee">
+    <div class="form-group"><label>TYPE</label>
+      <select id="hist-edit-type">
+        <option value="out">▼ Uitgegeven</option>
+        <option value="in">▲ Retour</option>
+        <option value="order">📦 Bestelling ontvangen</option>
+      </select>
+    </div>
+    <div class="form-group"><label>PRODUCT</label><select id="hist-edit-product"></select></div>
+    <div class="form-group"><label>PROJECT</label><select id="hist-edit-project"><option value="">— Geen project —</option></select></div>
+    <div class="form-group"><label>AANTAL</label><input id="hist-edit-qty" type="number" step="0.125" min="0"></div>
+    <div class="form-group"><label>DATUM</label><input id="hist-edit-date" type="date"></div>
+    <div class="form-group"><label>NOTITIE</label><input id="hist-edit-note" placeholder="Optioneel"></div>
+    <div id="hist-edit-meta" style="font-size:11px;color:var(--muted);margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger" onclick="deleteHistoryEntry()" style="margin-top:0">🗑️ Verwijder</button>
+      <button class="btn btn-primary" onclick="saveHistoryEdit()" style="margin-top:0;flex:1">Opslaan</button>
     </div>
   </div>
 </div>
@@ -746,9 +778,10 @@ function renderDashboard() {
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
       const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
+      const projText=proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':'');
       const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
-      return `<div class="hist-item"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${proj?' → '+proj.name:''}</div>
+      return `<div class="hist-item" onclick="openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
+        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${projText}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join('');
 }
@@ -1456,6 +1489,7 @@ async function confirmIssue() {
   const qty=Math.round((parseFloat(document.getElementById('issue-qty').value)||0.125)*1000)/1000;
   if(qty<=0) { alert('Voer een geldige hoeveelheid in.'); return; }
   const projId=parseInt(document.getElementById('issue-project').value)||null;
+  if(issueMode==='out' && !projId) { alert('Kies eerst een project. Materiaal kan alleen op een project worden uitgegeven.'); return; }
   const note=document.getElementById('issue-note').value;
   const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
   if(issueMode==='out'&&prod.qty<qty) { alert('Onvoldoende voorraad!'); return; }
@@ -1517,9 +1551,10 @@ function openProductDetail(id) {
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
       const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':'📦 Ontvangen';
-      return `<div class="hist-item"><div class="hist-dot ${h.type}"></div>
+      const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
+      return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
         <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}</div>
-        <div class="hist-date">${h.date}${h.note?' · '+h.note:''}</div></div></div>`;
+        <div class="hist-date">${meta}</div></div></div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}`;
   openModal('modal-detail');
 }
@@ -1557,7 +1592,7 @@ function openProjDetail(id) {
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
       const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:''].filter(Boolean).join(' · ');
-      return `<div class="proj-item">
+      return `<div class="proj-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})">
         <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${meta}</div></div>
         <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
           ${h.type==='out'?'-':'+'}${h.qty} ${pr?pr.unit:''}</div>
@@ -1688,6 +1723,97 @@ async function deleteEmployee(id) {
   await dbDelete('employees', `id=eq.${id}`);
   if(getCurrentEmployee()===e.name) setCurrentEmployee('');
   await loadAll(); renderSettings();
+}
+
+// ====================== HISTORY BEWERKEN/VERWIJDEREN ======================
+// Voorraad-impact per regel: out trekt af, in/order voegt toe.
+function historyStockDelta(type, qty) {
+  if(type==='out') return -qty;
+  if(type==='in' || type==='order') return +qty;
+  return 0;
+}
+
+function openHistoryEdit(histId) {
+  const h=db.history.find(x=>x.id===histId); if(!h) return;
+  document.getElementById('hist-edit-id').value=h.id;
+  document.getElementById('hist-edit-employee').value=h.employee||'';
+  document.getElementById('hist-edit-type').value=h.type;
+  // Vul product-dropdown
+  const prodSel=document.getElementById('hist-edit-product');
+  prodSel.innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  prodSel.value=h.productId;
+  // Vul project-dropdown
+  const projSel=document.getElementById('hist-edit-project');
+  projSel.innerHTML='<option value="">— Geen project —</option>'+db.projects.map(p=>`<option value="${p.id}">${p.name}${p.status!=='actief'?' (afgerond)':''}</option>`).join('');
+  projSel.value=h.projectId||'';
+  document.getElementById('hist-edit-qty').value=h.qty;
+  document.getElementById('hist-edit-date').value=h.date||today();
+  document.getElementById('hist-edit-note').value=h.note||'';
+  const meta=[`oorspronkelijk geboekt door: ${h.employee||'onbekend'}`].join(' · ');
+  document.getElementById('hist-edit-meta').textContent=meta;
+  openModal('modal-history');
+}
+
+async function saveHistoryEdit() {
+  const id=parseInt(document.getElementById('hist-edit-id').value);
+  const oldH=db.history.find(x=>x.id===id); if(!oldH) { alert('Boeking niet gevonden.'); return; }
+  const newType=document.getElementById('hist-edit-type').value;
+  const newProdId=parseInt(document.getElementById('hist-edit-product').value);
+  const projVal=document.getElementById('hist-edit-project').value;
+  const newProjId=projVal?parseInt(projVal):null;
+  const newQty=Math.round((parseFloat(document.getElementById('hist-edit-qty').value)||0)*1000)/1000;
+  const newDate=document.getElementById('hist-edit-date').value||today();
+  const newNote=document.getElementById('hist-edit-note').value;
+  if(newQty<=0) { alert('Aantal moet groter dan 0 zijn.'); return; }
+  if(!newProdId) { alert('Kies een product.'); return; }
+
+  setSyncing('syncing');
+  // 1. Rol oude impact terug op oude product
+  const oldProd=db.products.find(p=>p.id===oldH.productId);
+  if(oldProd) {
+    const delta=-historyStockDelta(oldH.type, oldH.qty); // omgekeerd
+    const updated=Math.max(0, Math.round((oldProd.qty+delta)*1000)/1000);
+    await dbPatch('products', `id=eq.${oldProd.id}`, {qty:updated});
+  }
+  // 2. Pas nieuwe impact toe op nieuw product (kan zelfde zijn)
+  const newProd=db.products.find(p=>p.id===newProdId);
+  if(newProd) {
+    // Belangrijk: als oldProd === newProd, dan is oldProd.qty al aangepast in stap 1.
+    // We moeten op de actuele DB-waarde verder werken — herlaad het product.
+    const fresh=await dbGet('products', `id=eq.${newProdId}&select=qty`);
+    const curQty=fresh&&fresh[0]?Number(fresh[0].qty)||0:newProd.qty;
+    const delta=historyStockDelta(newType, newQty);
+    const updated=Math.max(0, Math.round((curQty+delta)*1000)/1000);
+    await dbPatch('products', `id=eq.${newProdId}`, {qty:updated});
+  }
+  // 3. Update history-regel zelf (employee blijft de oorspronkelijke)
+  await dbPatch('history', `id=eq.${id}`, {
+    type:newType,
+    product_id:newProdId,
+    project_id:newProjId,
+    qty:newQty,
+    date:newDate,
+    note:newNote
+  });
+  closeModal('modal-history');
+  await loadAll();
+}
+
+async function deleteHistoryEntry() {
+  const id=parseInt(document.getElementById('hist-edit-id').value);
+  const h=db.history.find(x=>x.id===id); if(!h) return;
+  const prod=db.products.find(p=>p.id===h.productId);
+  if(!confirm(`Boeking verwijderen?\n\n${h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Ontvangen'}: ${h.qty}× ${prod?prod.name:'?'}\n\nDe voorraad wordt automatisch hersteld.`)) return;
+  setSyncing('syncing');
+  // Rol impact terug
+  if(prod) {
+    const delta=-historyStockDelta(h.type, h.qty);
+    const updated=Math.max(0, Math.round((prod.qty+delta)*1000)/1000);
+    await dbPatch('products', `id=eq.${prod.id}`, {qty:updated});
+  }
+  await dbDelete('history', `id=eq.${id}`);
+  closeModal('modal-history');
+  await loadAll();
 }
 
 async function editCategory(idx) {
