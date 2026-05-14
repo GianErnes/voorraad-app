@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.1 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.3.2 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -510,13 +510,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — sneller kleurcodes invoeren:<br><br>
-  • <strong>Kleurcode-veld in Product bewerken</strong> — voortaan kun je in één klap meerdere kleurcodes invoeren via een vrij tekstveld, komma-gescheiden. Geen aparte stappen meer nodig per code.<br>
-  • Automatische normalisatie blijft werken: "7021" wordt "RAL 7021", "on0010" wordt "On.00.10", duplicaten worden weggehaald.
+  <strong>Welkom bij v${APP_VERSION}</strong><br><br>
+  • <strong>NCS Sigma/Akzo kleurcodes nu netjes in hoofdletters</strong> — "S 2005-Y50r" wordt automatisch "S 2005-Y50R". Consistente weergave overal, geen handmatig corrigeren meer.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1399,6 +1398,9 @@ function normalizeColor(raw) {
   if(m) return 'RAL ' + m[1];
   // 3. NCS-achtige codes (X0.00.00 / X.00.00): hoofdletter voorop
   if(/^[A-Za-z]\d?\.\d{2}\.\d{2}$/.test(s)) return s.charAt(0).toUpperCase() + s.slice(1);
+  // 3b. NCS Sigma/Akzo: "S 2005-Y50r", "s2005-y50r" → "S 2005-Y50R"
+  m = s.match(/^[Ss]\s*(\d{4})\s*-\s*([A-Za-z0-9]+)$/);
+  if(m) return 'S ' + m[1] + '-' + m[2].toUpperCase();
   // 4. Sikkens-eigen codes (GY1281-2514, etc): laat staan
   if(/^[A-Z]{1,3}\d{2,4}-\d{3,4}$/.test(s)) return s;
   // 5. 3-cijferige Cetol/houtkleur codes (085): laat staan
