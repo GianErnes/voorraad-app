@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.2.0 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.2.1 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -509,16 +509,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — slimmere kleurzoek:<br><br>
-  • <strong>Zoeken werkt nu format-onafhankelijk</strong> op kleurcodes en productnamen. Spaties, punten en streepjes worden genegeerd. Voorbeelden:<br>
-  &nbsp;&nbsp;– "7021" vindt "RAL 7021" én "RAL7021"<br>
-  &nbsp;&nbsp;– "on0010" vindt "ON.00.10"<br>
-  &nbsp;&nbsp;– "ral 7021" vindt "RAL7021"<br>
-  • Voorbereiding op opschonen van productnamen: omdat zoeken nu ook op kleurcode werkt, hoeft de kleur niet meer in de productnaam te staan. Je kunt geleidelijk producten omzetten naar generieke naam ("Jotun Demidekk") + kleurcode in het apart veld + volledige leveranciersnaam (inclusief basis voor prijs) in factuur-naam.
+  <strong>Welkom bij v${APP_VERSION}</strong> — kleurcodes zichtbaar op de voorraadlijst:<br><br>
+  • <strong>Kleurcodes als labels</strong> — onder elke productnaam staan nu de kleurcodes als kleine pillen, in mono-font. Je hoeft niet meer op het product te klikken om te zien welke kleur erin gaat. De 🎨-emoji is vervangen door de codes zelf.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -846,9 +842,10 @@ function renderStock() {
       const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
       return `<div class="card">
         <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
-          <span class="card-title">${p.name}${(Array.isArray(p.color_codes)&&p.color_codes.length)?` <span title="${p.color_codes.length} kleurcode${p.color_codes.length===1?'':'s'}: ${p.color_codes.join(', ')}" style="font-size:13px;opacity:.85">🎨</span>`:''}</span>
+          <span class="card-title">${p.name}</span>
           <span class="badge ${bc}">${bl}</span>
         </div>
+        ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);padding:2px 7px;border-radius:4px;color:var(--text);letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           <button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
