@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.3 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.3.4 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -510,12 +510,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.3';
+const APP_VERSION = '2.3.4';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
   <strong>Welkom bij v${APP_VERSION}</strong><br><br>
-  • <strong>Modals openen voortaan altijd vanaf de bovenkant</strong> — bij Product bewerken (en alle andere formulieren) zie je direct het eerste veld in beeld, geen scroll naar boven meer nodig.
+  • <strong>Kleurcodes nu in accent-kleur (rood)</strong> — beter zichtbaar op iPhone. Rode rand + rode tekst op een lichte achtergrond, voldoende contrast om in een oogopslag te zien welke kleuren bij een product horen.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -857,7 +857,7 @@ function renderStock() {
           <span class="card-title">${p.name}</span>
           <span class="badge ${bc}">${bl}</span>
         </div>
-        ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);padding:2px 7px;border-radius:4px;color:var(--text);letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+        ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           <button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
@@ -928,7 +928,7 @@ function renderOrders() {
         <div class="sup-block-body">
           ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;const ordered=isOrderActive(p);return `<div class="sup-row${ordered?' ordered':''}">
             <div style="flex:1;min-width:0"><div style="font-weight:500;font-size:14px">${orderName(p)}${ordered?` <span class="badge badge-ok" style="margin-left:6px">✓ besteld ${fmtOrderedDate(p.last_ordered_at)}</span>`:''}</div>
-            ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text);letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+            ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
             <div class="card-sub" style="margin-top:4px">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
             <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
             ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
