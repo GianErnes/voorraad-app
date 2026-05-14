@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.2.2 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.3.0 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -509,14 +509,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.2.2';
+const APP_VERSION = '2.3.0';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — kleurcodes in het bestelproces:<br><br>
-  • <strong>Visueel</strong> — op de Bestellen-pagina staan onder elke productnaam nu de kleurcodes als pillen, net als op de voorraadlijst.<br>
-  • <strong>WhatsApp-bericht</strong> — naar leveranciers gaan de kleurcodes mee in het bericht. Voorbeeld: <em>"- Sikkens Rubbol BL Uniprimer (RAL 7021): 3 stuk"</em>.<br>
-  • <strong>Export</strong> — Exporteer en de totaal-export bevatten nu ook de kleurcodes per regel.
+  <strong>Welkom bij v${APP_VERSION}</strong> — nieuwe filter voor producten zonder prijs:<br><br>
+  • <strong>💶 € 0,00 categorie</strong> — naast Alles en 🎯 Actief staat nu een derde virtuele categorie die alle producten zonder prijs (€0) toont. Handig om snel te zien welke artikelen nog een prijs missen, en straks bij factuur-inlezen makkelijk te verifiëren wat er nog wel/niet is bijgewerkt.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -825,9 +823,11 @@ let activeCat='Alles';
 function renderStock() {
   const activeCount=db.products.filter(p=>Number(p.min)>0).length;
   const allCount=db.products.length;
+  const noPriceCount=db.products.filter(p=>!Number(p.price)).length;
   const cats=[
     {key:'Alles',label:`Alles (${allCount})`},
     {key:'🎯 Actief',label:`🎯 Actief (${activeCount})`},
+    {key:'💶 € 0,00',label:`💶 € 0,00 (${noPriceCount})`},
     ...db.categories.map(c=>({key:c,label:`${c} (${db.products.filter(p=>p.cat===c).length})`}))
   ];
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c.key===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.key.replace(/"/g,'&quot;')}">${c.label}</div>`).join('');
@@ -836,6 +836,7 @@ function renderStock() {
   let prods;
   if(activeCat==='Alles') prods=db.products;
   else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
+  else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
   else prods=db.products.filter(p=>p.cat===activeCat);
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
