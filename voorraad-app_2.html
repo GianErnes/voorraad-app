@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.2 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.3.3 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -510,12 +510,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.3.3';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
   <strong>Welkom bij v${APP_VERSION}</strong><br><br>
-  • <strong>NCS Sigma/Akzo kleurcodes nu netjes in hoofdletters</strong> — "S 2005-Y50r" wordt automatisch "S 2005-Y50R". Consistente weergave overal, geen handmatig corrigeren meer.
+  • <strong>Modals openen voortaan altijd vanaf de bovenkant</strong> — bij Product bewerken (en alle andere formulieren) zie je direct het eerste veld in beeld, geen scroll naar boven meer nodig.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -765,7 +765,15 @@ function stockStatus(p) {
   return ['badge-ok','OK'];
 }
 function barColor(p) { const r=p.qty/Math.max(p.min,0.001); return r<1?'var(--red)':r<1.5?'var(--accent)':'var(--green)'; }
-function openModal(id) { document.getElementById(id).classList.add('open'); }
+function openModal(id) {
+  const m=document.getElementById(id);
+  if(!m) return;
+  m.classList.add('open');
+  // Scroll modal-content naar boven zodat formulier altijd vanaf begin zichtbaar is
+  m.scrollTop=0;
+  const inner=m.querySelector('.modal');
+  if(inner) inner.scrollTop=0;
+}
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function openFab() { openModal('modal-fab'); }
 function stepVal(id,d) { const el=document.getElementById(id); el.value=Math.max(1,(parseInt(el.value)||1)+d); }
