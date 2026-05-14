@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.0.0 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.1.0 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-13                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -507,16 +507,13 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const BUILD_DATE = '2026-05-13';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — een grote update met vijf nieuwe functies:<br><br>
-  • <strong>Naamregistratie</strong> — kies bij opstart je naam, elke boeking wordt automatisch op jouw naam gezet (te wisselen via de badge rechtsboven).<br>
-  • <strong>Boeking corrigeren</strong> — tik op een geboekte regel om aantal, project of product aan te passen, of de regel te verwijderen. De voorraad wordt automatisch netjes teruggerold.<br>
-  • <strong>Project bewerken</strong> — fout gespelde projectnaam? Pas 'm aan via de bewerk-knop in het projectdetail.<br>
-  • <strong>Bestelmarkering</strong> — per leverancier markeer je in één tik welke artikelen besteld zijn. Vervalt automatisch na 10 werkdagen.<br>
-  • <strong>Veiliger uitgeven</strong> — bij uitgifte is een project nu verplicht. Geen materiaal meer dat in het niets verdwijnt.
+  <strong>Welkom bij v${APP_VERSION}</strong> — actieve producten in één tik:<br><br>
+  • <strong>🎯 Actief categorie</strong> — nieuwe filter-knop bovenaan de voorraadlijst. Toont alle producten met een minimale voorraad ingesteld, zodat je in één klap ziet welke artikelen je actief moet controleren.<br>
+  • Achter elke categorie staat nu het aantal producten zodat je direct weet hoeveel artikelen je per filter te zien krijgt.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -822,14 +819,17 @@ function renderDashboard() {
 
 // ====================== STOCK ======================
 let activeCat='Alles';
-let onlyWithMin=false;
 function renderStock() {
-  const cats=['Alles',...db.categories];
-  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.replace(/"/g,'&quot;')}">${c}</div>`).join('');
-  document.getElementById('min-filters').innerHTML=`<div class="chip${onlyWithMin?' active':''}" onclick="toggleMinFilter()">🎯 Met minimum</div>`;
+  const activeCount=db.products.filter(p=>Number(p.min)>0).length;
+  const allCount=db.products.length;
+  const cats=[{key:'Alles',label:`Alles (${allCount})`},{key:'🎯 Actief',label:`🎯 Actief (${activeCount})`},...db.categories.map(c=>({key:c,label:c}))];
+  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c.key===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.key.replace(/"/g,'&quot;')}">${c.label}</div>`).join('');
+  const minEl=document.getElementById('min-filters'); if(minEl) minEl.innerHTML='';
   const search=(document.getElementById('stock-search')||{}).value||'';
-  let prods=activeCat==='Alles'?db.products:db.products.filter(p=>p.cat===activeCat);
-  if(onlyWithMin) prods=prods.filter(p=>Number(p.min)>0);
+  let prods;
+  if(activeCat==='Alles') prods=db.products;
+  else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
+  else prods=db.products.filter(p=>p.cat===activeCat);
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
@@ -851,7 +851,6 @@ function renderStock() {
     }).join('');
 }
 function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
-function toggleMinFilter() { onlyWithMin=!onlyWithMin; renderStock(); }
 
 function clearSearch() {
   document.getElementById('stock-search').value='';
