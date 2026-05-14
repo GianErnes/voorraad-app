@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.2.1 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.2.2 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -509,12 +509,14 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.2.2';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — kleurcodes zichtbaar op de voorraadlijst:<br><br>
-  • <strong>Kleurcodes als labels</strong> — onder elke productnaam staan nu de kleurcodes als kleine pillen, in mono-font. Je hoeft niet meer op het product te klikken om te zien welke kleur erin gaat. De 🎨-emoji is vervangen door de codes zelf.
+  <strong>Welkom bij v${APP_VERSION}</strong> — kleurcodes in het bestelproces:<br><br>
+  • <strong>Visueel</strong> — op de Bestellen-pagina staan onder elke productnaam nu de kleurcodes als pillen, net als op de voorraadlijst.<br>
+  • <strong>WhatsApp-bericht</strong> — naar leveranciers gaan de kleurcodes mee in het bericht. Voorbeeld: <em>"- Sikkens Rubbol BL Uniprimer (RAL 7021): 3 stuk"</em>.<br>
+  • <strong>Export</strong> — Exporteer en de totaal-export bevatten nu ook de kleurcodes per regel.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -915,8 +917,9 @@ function renderOrders() {
         </div>
         <div class="sup-block-body">
           ${items.map(p=>{const q=orderQty(p);const packs=p.pack>1?Math.round(q/p.pack):0;const ordered=isOrderActive(p);return `<div class="sup-row${ordered?' ordered':''}">
-            <div><div style="font-weight:500;font-size:14px">${orderName(p)}${ordered?` <span class="badge badge-ok" style="margin-left:6px">✓ besteld ${fmtOrderedDate(p.last_ordered_at)}</span>`:''}</div>
-            <div class="card-sub">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
+            <div style="flex:1;min-width:0"><div style="font-weight:500;font-size:14px">${orderName(p)}${ordered?` <span class="badge badge-ok" style="margin-left:6px">✓ besteld ${fmtOrderedDate(p.last_ordered_at)}</span>`:''}</div>
+            ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text);letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+            <div class="card-sub" style="margin-top:4px">Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}</div></div>
             <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
             ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
             </div>
@@ -955,13 +958,18 @@ function orderName(p) {
   // Gebruik factuur_naam als die ingevuld is, anders gewone productnaam
   return (p.factuur_naam && p.factuur_naam.trim()) ? p.factuur_naam : p.name;
 }
+function orderColorSuffix(p) {
+  // Kleurcodes tussen haakjes achter de naam, voor in bestel-teksten
+  if(!Array.isArray(p.color_codes) || !p.color_codes.length) return '';
+  return ' (' + p.color_codes.join(', ') + ')';
+}
 function buildOrderText(supId) {
   const s=db.suppliers.find(x=>x.id===supId);
   const items=db.products.filter(p=>p.qty<p.min&&p.supplier===supId);
   if(!s||!items.length) return null;
   const d=new Date();
   let txt=`Bestellijst – ${s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n\n`;
-  items.forEach(p=>{const q=orderQty(p);txt+=`- ${orderName(p)}: ${q} ${p.unit}\n`;});
+  items.forEach(p=>{const q=orderQty(p);txt+=`- ${orderName(p)}${orderColorSuffix(p)}: ${q} ${p.unit}\n`;});
   txt+=`\nMet vriendelijke groet`;
   return {s,items,txt,d};
 }
@@ -970,7 +978,7 @@ function exportSupOrder(supId) {
   if(!r) { alert('Niets te exporteren.'); return; }
   const d=new Date();
   let txt=`BESTELLIJST – ${r.s.name}\nWeek ${getWeek(d)}, ${d.getFullYear()}\n${'─'.repeat(40)}\n${r.s.contact} | ${r.s.email} | ${r.s.phone}\n\n`;
-  r.items.forEach(p=>{const q=orderQty(p);txt+=`${orderName(p).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
+  r.items.forEach(p=>{const q=orderQty(p);txt+=`${(orderName(p)+orderColorSuffix(p)).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
   shareOrCopy(txt,`Bestellijst ${r.s.name}`);
 }
 function exportAllOrders() {
@@ -982,7 +990,7 @@ function exportAllOrders() {
     const items=needed.filter(p=>p.supplier===s.id);
     if(!items.length) return;
     txt+=`LEVERANCIER: ${s.name}\n${s.email} | ${s.phone}\n\n`;
-    items.forEach(p=>{const q=orderQty(p);txt+=`  ${orderName(p).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
+    items.forEach(p=>{const q=orderQty(p);txt+=`  ${(orderName(p)+orderColorSuffix(p)).padEnd(40)} ${String(q).padStart(4)} ${p.unit}\n`;});
     txt+='\n';
   });
   shareOrCopy(txt,'Volledige bestellijst');
