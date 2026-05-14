@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.0 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.3.1 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-14                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -334,6 +334,7 @@
     <input type="hidden" id="p-id">
     <div class="form-group"><label>NAAM</label><input id="p-name" placeholder="bv. Muurverf Wit 10L"></div>
     <div class="form-group"><label>FACTUUR-NAAM <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— optioneel; gebruikt op bestellijst zodat leverancier 't herkent</span></label><input id="p-factuur-naam" placeholder="bv. Sigmatex superlatex matt kl.(WN) 1ltr"></div>
+    <div class="form-group"><label>KLEURCODES <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— meerdere mogelijk, gescheiden door komma's. Worden automatisch genormaliseerd (7021 → RAL 7021)</span></label><input id="p-color-codes" placeholder="bv. RAL 7021, RAL 9010"></div>
     <div class="form-group"><label>BARCODE (optioneel)</label>
       <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
       <button class="btn btn-secondary" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
@@ -509,12 +510,13 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const BUILD_DATE = '2026-05-14';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — nieuwe filter voor producten zonder prijs:<br><br>
-  • <strong>💶 € 0,00 categorie</strong> — naast Alles en 🎯 Actief staat nu een derde virtuele categorie die alle producten zonder prijs (€0) toont. Handig om snel te zien welke artikelen nog een prijs missen, en straks bij factuur-inlezen makkelijk te verifiëren wat er nog wel/niet is bijgewerkt.
+  <strong>Welkom bij v${APP_VERSION}</strong> — sneller kleurcodes invoeren:<br><br>
+  • <strong>Kleurcode-veld in Product bewerken</strong> — voortaan kun je in één klap meerdere kleurcodes invoeren via een vrij tekstveld, komma-gescheiden. Geen aparte stappen meer nodig per code.<br>
+  • Automatische normalisatie blijft werken: "7021" wordt "RAL 7021", "on0010" wordt "On.00.10", duplicaten worden weggehaald.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1135,6 +1137,7 @@ function openProductModal(editId=null) {
     const p=db.products.find(x=>x.id===editId); if(!p) return;
     document.getElementById('p-name').value=p.name;
     document.getElementById('p-factuur-naam').value=p.factuur_naam||'';
+    document.getElementById('p-color-codes').value=(Array.isArray(p.color_codes)?p.color_codes:[]).join(', ');
     document.getElementById('p-barcode').value=p.barcode||'';
     document.getElementById('p-cat').value=p.cat;
     document.getElementById('p-unit').value=p.unit;
@@ -1145,7 +1148,7 @@ function openProductModal(editId=null) {
     document.getElementById('p-price').value=p.price;
     document.getElementById('p-supplier').value=p.supplier;
   } else {
-    ['p-name','p-factuur-naam','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
+    ['p-name','p-factuur-naam','p-color-codes','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
   }
   openModal('modal-product');
 }
@@ -1153,6 +1156,11 @@ async function saveProduct() {
   const name=document.getElementById('p-name').value.trim();
   if(!name) { alert('Vul een naam in.'); return; }
   const editId=parseInt(document.getElementById('p-id').value)||null;
+  // Kleurcodes: split op komma, normaliseren, dedupen, lege weg
+  const rawCodes=document.getElementById('p-color-codes').value;
+  const colorCodes=Array.from(new Set(
+    rawCodes.split(',').map(s=>normalizeColor(s)).filter(s=>s.length>0)
+  ));
   const data={
     name, cat:document.getElementById('p-cat').value,
     unit:document.getElementById('p-unit').value,
@@ -1163,7 +1171,8 @@ async function saveProduct() {
     price:parseFloat(document.getElementById('p-price').value)||0,
     supplier_id:parseInt(document.getElementById('p-supplier').value)||null,
     barcode:document.getElementById('p-barcode').value.trim()||null,
-    factuur_naam:document.getElementById('p-factuur-naam').value.trim()||null
+    factuur_naam:document.getElementById('p-factuur-naam').value.trim()||null,
+    color_codes:colorCodes
   };
   setSyncing('syncing');
   if(editId) await dbPatch('products', `id=eq.${editId}`, data);
