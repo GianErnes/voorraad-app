@@ -4,8 +4,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.5 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-15                                        ║
+  ║  Versie: 2.4.0 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-18                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -25,6 +25,10 @@
   ║  • Step 0.125 voor materiaal uitgeven                                ║
   ║  • Decimalen + skip-knop in receive flow                             ║
   ║  • color_codes array op products (kleurcodes per product)            ║
+  ║  • color_code op history — specifieke kleur per boeking              ║
+  ║    └─ dropdown in issue-modal als product 2+ kleuren heeft           ║
+  ║    └─ ook bewerkbaar in Boeking corrigeren                           ║
+  ║    └─ wordt prominent getoond in project-detail materiaalverbruik    ║
   ║  • employee_name op history — wie heeft de boeking gedaan            ║
   ║    └─ employees tabel met CRUD via instellingen                      ║
   ║    └─ sessieKeuze na pincode (modal-employee)                        ║
@@ -389,7 +393,8 @@
         <option value="order">📦 Bestelling ontvangen</option>
       </select>
     </div>
-    <div class="form-group"><label>PRODUCT</label><select id="hist-edit-product"></select></div>
+    <div class="form-group"><label>PRODUCT</label><select id="hist-edit-product" onchange="onHistEditProductChange()"></select></div>
+    <div class="form-group" id="hist-edit-color-group" style="display:none"><label>KLEUR</label><select id="hist-edit-color"></select></div>
     <div class="form-group"><label>PROJECT</label><select id="hist-edit-project"><option value="">— Geen project —</option></select></div>
     <div class="form-group"><label>AANTAL</label><input id="hist-edit-qty" type="number" step="0.125" min="0"></div>
     <div class="form-group"><label>DATUM</label><input id="hist-edit-date" type="date"></div>
@@ -418,6 +423,9 @@
       <div id="issue-product-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
       <input type="hidden" id="issue-product">
       <div id="issue-selected" style="font-size:13px;color:var(--accent);margin-top:6px;min-height:18px"></div>
+    </div>
+    <div class="form-group" id="issue-color-group" style="display:none"><label>KLEUR</label>
+      <select id="issue-color"></select>
     </div>
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper">
@@ -510,12 +518,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.5';
-const BUILD_DATE = '2026-05-15';
+const APP_VERSION = '2.4.0';
+const BUILD_DATE = '2026-05-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong><br><br>
-  • <strong>Kleurcodes nu ook bij uitgeven en retourneren</strong> — bij het selecteren van een product zie je de kleurcodes als rode pillen onder de naam, zodat je direct ziet welke kleur je kiest. Ook zichtbaar in de barcode-keuze-modal bij meerdere matches.
+  <strong>Welkom bij v${APP_VERSION}</strong> — specifieke kleur per boeking:<br><br>
+  • <strong>Bij uitgifte en retour kies je nu een kleur</strong> als het product meerdere kleurvarianten heeft. Bij 1 kleur wordt 'ie automatisch geselecteerd, bij 0 kleuren wordt het veld verborgen.<br>
+  • <strong>In project-detail materiaalverbruik</strong> staat de specifiek geboekte kleur prominent als rode pil. Geen rateling meer welke kleur primer waar zit.<br>
+  • <strong>In dashboard recente activiteit</strong> staat de kleur ook achter de productnaam.<br>
+  • <strong>In Boeking corrigeren</strong> kun je de kleur achteraf wijzigen — handig om oude boekingen (zonder kleur) alsnog aan te vullen.<br>
+  • <em>Let op: nieuwe database-kolom \`color_code\` op \`history\`. Bestaande boekingen hebben geen kleur — kun je via Boeking corrigeren invullen waar nodig.</em>
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -706,7 +718,7 @@ async function loadAll() {
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
     db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
-    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||''}));
+    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||''}));
     db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false}));
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
@@ -820,9 +832,10 @@ function renderDashboard() {
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
       const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
       const projText=proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':'');
+      const colorTag = h.color ? ` <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--accent);padding:1px 6px;border-radius:4px;color:#fff;font-weight:500;letter-spacing:.3px;margin-left:4px">${h.color}</span>` : '';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${projText}</div>
+        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${colorTag}${projText}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join('');
 }
@@ -1353,6 +1366,8 @@ function openIssueModal(mode) {
   document.getElementById('issue-search').value='';
   document.getElementById('issue-product').value='';
   document.getElementById('issue-selected').textContent='';
+  document.getElementById('issue-color-group').style.display='none';
+  document.getElementById('issue-color').innerHTML='';
   renderIssueProductList(issueProducts);
 
   document.getElementById('issue-qty').value=1;
@@ -1516,6 +1531,23 @@ function selectIssueProduct(id) {
   document.getElementById('issue-qty-unit').textContent=p.unit;
   document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
 
+  // Kleur-keuze: alleen tonen als product 2+ kleurcodes heeft.
+  // 0 codes → geen kleur (NULL); 1 code → automatisch die kleur; 2+ → dropdown.
+  const codes = Array.isArray(p.color_codes) ? p.color_codes : [];
+  const grp = document.getElementById('issue-color-group');
+  const sel = document.getElementById('issue-color');
+  if(codes.length >= 2) {
+    sel.innerHTML = '<option value="">— Kies kleur —</option>' + codes.map(c=>`<option value="${c}">${c}</option>`).join('');
+    grp.style.display = '';
+  } else if(codes.length === 1) {
+    sel.innerHTML = `<option value="${codes[0]}">${codes[0]}</option>`;
+    sel.value = codes[0];
+    grp.style.display = 'none';
+  } else {
+    sel.innerHTML = '';
+    grp.style.display = 'none';
+  }
+
   // Bij retourneren: automatisch de uitgegeven hoeveelheid invullen
   if(issueMode==='in') {
     const projId=parseInt(document.getElementById('issue-project').value)||null;
@@ -1566,6 +1598,10 @@ async function confirmIssue() {
   const note=document.getElementById('issue-note').value;
   const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
   if(issueMode==='out'&&prod.qty<qty) { alert('Onvoldoende voorraad!'); return; }
+  // Kleur-validatie: als product 2+ kleurcodes heeft moet er een gekozen zijn
+  const colorGroupVisible = document.getElementById('issue-color-group').style.display !== 'none';
+  const colorCode = (document.getElementById('issue-color').value || '').trim() || null;
+  if(colorGroupVisible && !colorCode) { alert('Kies eerst een kleur — dit product heeft meerdere kleurvarianten.'); return; }
   // Retour-validatie: niet meer terugboeken dan netto op het project staat
   if(issueMode==='in' && projId) {
     const uitgegeven=db.history.filter(h=>h.projectId===projId&&h.productId===prodId&&h.type==='out').reduce((s,h)=>s+h.qty,0);
@@ -1577,7 +1613,7 @@ async function confirmIssue() {
   const newQty=Math.round((prod.qty+(issueMode==='out'?-qty:qty))*100)/100;
   setSyncing('syncing');
   await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
-  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null});
+  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null,color_code:colorCode});
   await loadAll();
 
   // Modal blijft open — reset product, project blijft staan
@@ -1587,6 +1623,8 @@ async function confirmIssue() {
   document.getElementById('issue-qty').value=issueMode==='out'?1:0.25;
   document.getElementById('issue-qty-unit').textContent='';
   document.getElementById('issue-note').value='';
+  document.getElementById('issue-color-group').style.display='none';
+  document.getElementById('issue-color').innerHTML='';
   document.getElementById('issue-confirm-btn').textContent=issueMode==='out'?'Uitgeven':'Retourneren';
   document.getElementById('issue-search').value='';
 
@@ -1665,9 +1703,16 @@ function openProjDetail(id) {
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
       const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:''].filter(Boolean).join(' · ');
+      // Specifieke geboekte kleur als die is opgeslagen, anders alle kleurvarianten als context
+      let codes='';
+      if(h.color) {
+        codes=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"><span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--accent);border:1px solid var(--accent);padding:1px 7px;border-radius:4px;color:#fff;font-weight:500;letter-spacing:.3px">${h.color}</span></div>`;
+      } else if(pr&&Array.isArray(pr.color_codes)&&pr.color_codes.length) {
+        codes=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${pr.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px;opacity:.6" title="Geen specifieke kleur geboekt — alle varianten van dit product">${c}</span>`).join('')}</div>`;
+      }
       return `<div class="proj-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})">
-        <div><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div><div class="hist-date">${meta}</div></div>
-        <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'}">
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div>${codes}<div class="hist-date" style="margin-top:4px">${meta}</div></div>
+        <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'};flex-shrink:0">
           ${h.type==='out'?'-':'+'}${h.qty} ${pr?pr.unit:''}</div>
       </div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen materiaal geboekt</div>'}`;
@@ -1822,9 +1867,37 @@ function openHistoryEdit(histId) {
   document.getElementById('hist-edit-qty').value=h.qty;
   document.getElementById('hist-edit-date').value=h.date||today();
   document.getElementById('hist-edit-note').value=h.note||'';
+  // Vul kleur-dropdown gebaseerd op huidige product, behoud huidige kleur indien mogelijk
+  populateHistEditColors(h.color||'');
   const meta=[`oorspronkelijk geboekt door: ${h.employee||'onbekend'}`].join(' · ');
   document.getElementById('hist-edit-meta').textContent=meta;
   openModal('modal-history');
+}
+
+function populateHistEditColors(preferredColor) {
+  const prodId=parseInt(document.getElementById('hist-edit-product').value);
+  const p=db.products.find(x=>x.id===prodId);
+  const codes=(p&&Array.isArray(p.color_codes))?p.color_codes:[];
+  const grp=document.getElementById('hist-edit-color-group');
+  const sel=document.getElementById('hist-edit-color');
+  if(codes.length>=1) {
+    sel.innerHTML='<option value="">— Geen kleur —</option>'+codes.map(c=>`<option value="${c}">${c}</option>`).join('');
+    // Probeer eerder gekozen kleur te behouden als die in de lijst zit
+    sel.value=codes.includes(preferredColor)?preferredColor:'';
+    grp.style.display=codes.length>=2?'':'none';
+    // Bij 1 kleur: automatisch invullen maar groep verbergen
+    if(codes.length===1) sel.value=codes[0];
+  } else {
+    sel.innerHTML='';
+    sel.value='';
+    grp.style.display='none';
+  }
+}
+
+function onHistEditProductChange() {
+  // Behoud kleur indien die ook bij het nieuwe product bestaat, anders leeg
+  const cur=document.getElementById('hist-edit-color').value||'';
+  populateHistEditColors(cur);
 }
 
 async function saveHistoryEdit() {
@@ -1837,6 +1910,7 @@ async function saveHistoryEdit() {
   const newQty=Math.round((parseFloat(document.getElementById('hist-edit-qty').value)||0)*1000)/1000;
   const newDate=document.getElementById('hist-edit-date').value||today();
   const newNote=document.getElementById('hist-edit-note').value;
+  const newColor=(document.getElementById('hist-edit-color').value||'').trim()||null;
   if(newQty<=0) { alert('Aantal moet groter dan 0 zijn.'); return; }
   if(!newProdId) { alert('Kies een product.'); return; }
 
@@ -1866,7 +1940,8 @@ async function saveHistoryEdit() {
     project_id:newProjId,
     qty:newQty,
     date:newDate,
-    note:newNote
+    note:newNote,
+    color_code:newColor
   });
   closeModal('modal-history');
   await loadAll();
