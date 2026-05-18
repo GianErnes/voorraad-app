@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.4.2 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.4.3 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-18                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -518,13 +518,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.4.2';
+const APP_VERSION = '2.4.3';
 const BUILD_DATE = '2026-05-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — consistente pil-stijl overal:<br><br>
-  • <strong>Eén pil-stijl voor de hele app</strong> — alle kleurcodes overal in dezelfde outline-stijl (rode rand + rode tekst op lichte achtergrond), zoals het altijd was.<br>
-  • <strong>Geboekte kleur gemarkeerd met ✓</strong> — bij elke regel in project-detail en dashboard zie je alle kleurvarianten van het product, en de specifiek geboekte kleur krijgt een ✓ vóór de code in dezelfde pil-stijl, vetgedrukt. Volledig overzicht zonder visuele inconsistentie.
+  <strong>Welkom bij v${APP_VERSION}</strong><br><br>
+  • <strong>Vinkjes weg</strong> — overbodige markering verwijderd. Elk product heeft sowieso maar 1 kleurpil (omdat voorraad per kleurvariant wordt bijgehouden), dus "welke is geboekt" was nooit een vraag. Alle pillen weer uniform in dezelfde outline-stijl, overal in de app.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -829,12 +828,8 @@ function renderDashboard() {
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
       const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
       const projText=proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':'');
-      const allCodes=(prod&&Array.isArray(prod.color_codes))?[...prod.color_codes]:[];
-      if(h.color && !allCodes.includes(h.color)) allCodes.unshift(h.color);
-      const codes=allCodes.length?` <span style="display:inline-flex;flex-wrap:wrap;gap:3px;margin-left:4px;vertical-align:middle">${allCodes.map(c=>{
-        const sel=(c===h.color);
-        return `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:${sel?'700':'500'};letter-spacing:.3px">${sel?'✓ ':''}${c}</span>`;
-      }).join('')}</span>`:'';
+      const allCodes=(prod&&Array.isArray(prod.color_codes))?prod.color_codes:[];
+      const codes=allCodes.length?` <span style="display:inline-flex;flex-wrap:wrap;gap:3px;margin-left:4px;vertical-align:middle">${allCodes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</span>`:'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
         <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${codes}${projText}</div>
@@ -1705,12 +1700,8 @@ function openProjDetail(id) {
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
       const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:''].filter(Boolean).join(' · ');
-      const allCodes = (pr&&Array.isArray(pr.color_codes))?[...pr.color_codes]:[];
-      if(h.color && !allCodes.includes(h.color)) allCodes.unshift(h.color);
-      const codes = allCodes.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${allCodes.map(c=>{
-        const sel=(c===h.color);
-        return `<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 7px;border-radius:4px;color:var(--accent);font-weight:${sel?'700':'500'};letter-spacing:.3px">${sel?'✓ ':''}${c}</span>`;
-      }).join('')}</div>`:'';
+      const allCodes = (pr&&Array.isArray(pr.color_codes))?pr.color_codes:[];
+      const codes = allCodes.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${allCodes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:'';
       return `<div class="proj-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})">
         <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${pr?pr.name:'?'}</div>${codes}<div class="hist-date" style="margin-top:4px">${meta}</div></div>
         <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:${h.type==='out'?'var(--red)':'var(--green)'};flex-shrink:0">
