@@ -1,12 +1,11 @@
 
-
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.3.4 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-14                                        ║
+  ║  Versie: 2.3.5 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-15                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -269,7 +268,7 @@
     <div class="section-hdr">Handleiding</div>
     <div class="card">
       <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Gebruiksaanwijzing voor het hele team.</p>
-      <a href="https://gianernes.github.io/voorraad-app/handleiding.html?v=2" target="_blank" class="btn btn-secondary btn-full" style="margin-top:0">📖 Open handleiding</a>
+      <a href="https://gianernes.github.io/voorraad-app/handleiding.html" target="_blank" class="btn btn-secondary btn-full" style="margin-top:0">📖 Open handleiding</a>
     </div>
     <div class="section-hdr">Data back-up</div>
     <div class="card">
@@ -511,12 +510,12 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.3.4';
-const BUILD_DATE = '2026-05-14';
+const APP_VERSION = '2.3.5';
+const BUILD_DATE = '2026-05-15';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
   <strong>Welkom bij v${APP_VERSION}</strong><br><br>
-  • <strong>Kleurcodes nu in accent-kleur (rood)</strong> — beter zichtbaar op iPhone. Rode rand + rode tekst op een lichte achtergrond, voldoende contrast om in een oogopslag te zien welke kleuren bij een product horen.
+  • <strong>Kleurcodes nu ook bij uitgeven en retourneren</strong> — bij het selecteren van een product zie je de kleurcodes als rode pillen onder de naam, zodat je direct ziet welke kleur je kiest. Ook zichtbaar in de barcode-keuze-modal bij meerdere matches.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1370,7 +1369,8 @@ function renderIssueProductList(prods) {
   list.innerHTML=prods.map(p=>`
     <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
       <div style="font-weight:500">${p.name}</div>
-      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
+      ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
     </div>`).join('');
 }
 
@@ -1992,7 +1992,8 @@ function showBarcodeChoice(prods, onSelect) {
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Meerdere producten gevonden — kies het juiste:</p>
     ${prods.map(p=>`<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="barcodeChoose(${p.id})">
       <div class="card-title">${p.name}</div>
-      <div class="card-sub">${p.cat} · ${p.qty} ${p.unit} op voorraad</div>
+      ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+      <div class="card-sub" style="margin-top:4px">${p.cat} · ${p.qty} ${p.unit} op voorraad</div>
     </div>`).join('')}
   </div>`;
   document.body.appendChild(modal);
