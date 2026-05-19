@@ -4,8 +4,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.5.0 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-18                                        ║
+  ║  Versie: 2.5.1 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-19                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -34,6 +34,7 @@
   ║    └─ staff: alleen materiaal uitgeven/retourneren via project       ║
   ║    └─ isCurrentUserOwner() helper met failsafe (0 owners = open)     ║
   ║    └─ toggle via Instellingen → Medewerkers (⬆/⬇)                   ║
+  ║    └─ OWNER_PIN constante: pin-prompt bij wisselen naar eigenaar     ║
   ║  • employee_name op history — wie heeft de boeking gedaan            ║
   ║    └─ employees tabel met CRUD via instellingen                      ║
   ║    └─ sessieKeuze na pincode (modal-employee)                        ║
@@ -384,6 +385,16 @@
     </div>
   </div>
 </div>
+<!-- OWNER PIN -->
+<div class="modal-overlay" id="modal-owner-pin">
+  <div class="modal">
+    <div class="modal-title">Eigenaar-pin<span class="modal-close" onclick="cancelOwnerPin()">×</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px" id="owner-pin-target">Voer de eigenaar-pin in om te wisselen.</p>
+    <div class="form-group"><input id="owner-pin-input" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px;font-family:'JetBrains Mono',monospace"></div>
+    <div id="owner-pin-error" style="color:var(--accent);font-size:12px;margin-bottom:10px;min-height:16px"></div>
+    <button class="btn btn-primary btn-full" onclick="confirmOwnerPin()">Bevestigen</button>
+  </div>
+</div>
 <!-- HISTORY EDIT -->
 <div class="modal-overlay" id="modal-history">
   <div class="modal">
@@ -523,24 +534,28 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.5.0';
-const BUILD_DATE = '2026-05-18';
+const APP_VERSION = '2.5.1';
+const BUILD_DATE = '2026-05-19';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — rollen: eigenaar vs. medewerker:<br><br>
-  • <strong>Eigenaren (👑)</strong> — Gian en Max. Mogen alles: voorraadmutaties, producten/leveranciers/categorieën beheren, bestellingen ontvangen, boekingen corrigeren, instellingen.<br>
-  • <strong>Medewerkers (👤)</strong> — Bjorn, Jens, etc. Mogen materiaal uitgeven en retourneren op projecten. Alle voorraad-knoppen en instellingen verborgen.<br>
-  • <strong>Rol toekennen</strong> — in Instellingen → Medewerkers beheren staat een ⬆/⬇ knop per medewerker. Op de huidige badge rechtsboven verschijnt 👑 als je eigenaar bent.<br>
-  • <strong>Veilig</strong> — de laatste eigenaar kan niet worden ingetrokken (anders niemand kan instellingen meer beheren). Failsafe: als er nog geen eigenaren zijn, mag iedereen alles tot de eerste wordt gemarkeerd.
+  <strong>Welkom bij v${APP_VERSION}</strong> — eigenaar-pin bescherming:<br><br>
+  • <strong>Pin-prompt bij wisselen naar eigenaar</strong> — als iemand via de badge rechtsboven probeert te wisselen naar Gian of Max, wordt een aparte eigenaar-pin gevraagd. Staff kan niet meer ongezien promoveren.<br>
+  • <strong>OWNER_PIN constante</strong> — in het script bovenin staat de pin als constante (standaard \`1234\`). Wijzig 'm voor je deployt en deel alleen met Max.<br>
+  • Wisselen naar staff (Bjorn, Jens) blijft vrij — geen pin nodig.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
 const CORRECT_PIN = '6422'; // ← Verander dit naar jullie eigen pincode
 const SESSION_KEY = 'ernes_unlocked';
 const EMPLOYEE_KEY = 'ernes_employee';
+// Eigenaar-pin: extra drempel voor wisselen naar een eigenaar-medewerker.
+// Wijzig dit getal voor je deployt — kies iets dat alleen Gian en Max weten.
+// LET OP: deze waarde staat in de publieke source. Voor jouw schaal voldoende
+// als drempel, maar niet als echte security tegen een gemotiveerde aanvaller.
+const OWNER_PIN = '7102';
 let pinEntry = '';
 
 function initSecurity() {
@@ -644,8 +659,44 @@ function openEmployeePicker(required) {
   openModal('modal-employee');
 }
 function pickEmployee(name) {
+  // Bij wisselen naar een eigenaar: vraag eerst de eigenaar-pin
+  const target=(db.employees||[]).find(e=>e.name===name);
+  if(target && target.isOwner) {
+    requestOwnerPin(name, ()=>{
+      setCurrentEmployee(name);
+      closeModal('modal-employee');
+    });
+    return;
+  }
   setCurrentEmployee(name);
   closeModal('modal-employee');
+}
+
+let _ownerPinCallback=null;
+function requestOwnerPin(name, callback) {
+  _ownerPinCallback=callback;
+  document.getElementById('owner-pin-target').textContent=`Voer de eigenaar-pin in om als "${name}" verder te gaan.`;
+  document.getElementById('owner-pin-input').value='';
+  document.getElementById('owner-pin-error').textContent='';
+  openModal('modal-owner-pin');
+  setTimeout(()=>document.getElementById('owner-pin-input').focus(), 100);
+}
+function confirmOwnerPin() {
+  const v=document.getElementById('owner-pin-input').value;
+  if(v===OWNER_PIN) {
+    closeModal('modal-owner-pin');
+    const cb=_ownerPinCallback;
+    _ownerPinCallback=null;
+    if(cb) cb();
+  } else {
+    document.getElementById('owner-pin-error').textContent='Onjuiste pin.';
+    document.getElementById('owner-pin-input').value='';
+    document.getElementById('owner-pin-input').focus();
+  }
+}
+function cancelOwnerPin() {
+  _ownerPinCallback=null;
+  closeModal('modal-owner-pin');
 }
 async function addEmployeeAndPick() {
   const inp=document.getElementById('new-emp-input');
@@ -2179,6 +2230,9 @@ function exportData() {
 document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
 });
+// Enter-toets in owner-pin input
+const ownerPinInput=document.getElementById('owner-pin-input');
+if(ownerPinInput) ownerPinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmOwnerPin(); });
 
 // ====================== VERSIE-INDICATOR + WELKOMSTKAART ======================
 function showChangelog() {
