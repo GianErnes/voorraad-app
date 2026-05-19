@@ -526,6 +526,9 @@
 const APP_VERSION = '2.5.0';
 const BUILD_DATE = '2026-05-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
+// Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
+// Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
   <strong>Welkom bij v${APP_VERSION}</strong> — rollen: eigenaar vs. medewerker:<br><br>
   • <strong>Eigenaren (👑)</strong> — Gian en Max. Mogen alles: voorraadmutaties, producten/leveranciers/categorieën beheren, bestellingen ontvangen, boekingen corrigeren, instellingen.<br>
@@ -2195,7 +2198,9 @@ function initVersionIndicator() {
   if(info) info.textContent='Versie '+APP_VERSION;
   const build=document.getElementById('app-info-build');
   if(build) build.textContent='Build '+BUILD_DATE;
-  // Welkomstkaart bij nieuwe versie
+  // Welkomstkaart alleen bij nieuwe versie EN als changelog publiek mag zijn
+  // (vlag CHANGELOG_PUBLIC = false bij interne wijzigingen)
+  if(typeof CHANGELOG_PUBLIC !== 'undefined' && !CHANGELOG_PUBLIC) return;
   let seen=false;
   try { seen=localStorage.getItem(WELCOME_KEY)==='1'; } catch(e) {}
   if(!seen) {
