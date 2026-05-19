@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.4.3 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.5.0 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-18                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -29,6 +29,11 @@
   ║    └─ dropdown in issue-modal als product 2+ kleuren heeft           ║
   ║    └─ ook bewerkbaar in Boeking corrigeren                           ║
   ║    └─ wordt prominent getoond in project-detail materiaalverbruik    ║
+  ║  • is_owner op employees — rolverdeling                              ║
+  ║    └─ owners: voorraadmutaties, settings, history-edit, ontvangen    ║
+  ║    └─ staff: alleen materiaal uitgeven/retourneren via project       ║
+  ║    └─ isCurrentUserOwner() helper met failsafe (0 owners = open)     ║
+  ║    └─ toggle via Instellingen → Medewerkers (⬆/⬇)                   ║
   ║  • employee_name op history — wie heeft de boeking gedaan            ║
   ║    └─ employees tabel met CRUD via instellingen                      ║
   ║    └─ sessieKeuze na pincode (modal-employee)                        ║
@@ -289,7 +294,7 @@
     </div>
     <div class="section-hdr">Medewerkers beheren</div>
     <div class="card">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Bij elke uitgifte/retour wordt geregistreerd wie het heeft geboekt.</p>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Bij elke uitgifte/retour wordt geregistreerd wie het heeft geboekt. 👑 = eigenaar (mag voorraadmutaties, instellingen, etc.). 👤 = medewerker (alleen uitgeven/retourneren).</p>
       <div id="emp-settings-list"></div>
       <div style="display:flex;gap:8px;margin-top:14px">
         <input id="new-emp-settings-input" placeholder="Nieuwe medewerker…" style="flex:1">
@@ -324,7 +329,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 12l2 2 4-4"/></svg>
     Bestellen
   </div>
-  <div class="tab" onclick="setPage('settings')">
+  <div class="tab" id="tab-settings" onclick="setPage('settings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     Instellingen
   </div>
@@ -508,22 +513,25 @@
 <div class="modal-overlay" id="modal-fab">
   <div class="modal">
     <div class="modal-title">Actie kiezen<span class="modal-close" onclick="closeModal('modal-fab')">×</span></div>
-    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProductModal()">📦 Product toevoegen</button>
+    <button id="fab-product" class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProductModal()">📦 Product toevoegen</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProjectAdd()">🏗️ Nieuw project</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
-    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openSupplierAdd()">🏢 Leverancier toevoegen</button>
+    <button id="fab-supplier" class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openSupplierAdd()">🏢 Leverancier toevoegen</button>
   </div>
 </div>
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.4.3';
+const APP_VERSION = '2.5.0';
 const BUILD_DATE = '2026-05-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong><br><br>
-  • <strong>Vinkjes weg</strong> — overbodige markering verwijderd. Elk product heeft sowieso maar 1 kleurpil (omdat voorraad per kleurvariant wordt bijgehouden), dus "welke is geboekt" was nooit een vraag. Alle pillen weer uniform in dezelfde outline-stijl, overal in de app.
+  <strong>Welkom bij v${APP_VERSION}</strong> — rollen: eigenaar vs. medewerker:<br><br>
+  • <strong>Eigenaren (👑)</strong> — Gian en Max. Mogen alles: voorraadmutaties, producten/leveranciers/categorieën beheren, bestellingen ontvangen, boekingen corrigeren, instellingen.<br>
+  • <strong>Medewerkers (👤)</strong> — Bjorn, Jens, etc. Mogen materiaal uitgeven en retourneren op projecten. Alle voorraad-knoppen en instellingen verborgen.<br>
+  • <strong>Rol toekennen</strong> — in Instellingen → Medewerkers beheren staat een ⬆/⬇ knop per medewerker. Op de huidige badge rechtsboven verschijnt 👑 als je eigenaar bent.<br>
+  • <strong>Veilig</strong> — de laatste eigenaar kan niet worden ingetrokken (anders niemand kan instellingen meer beheren). Failsafe: als er nog geen eigenaren zijn, mag iedereen alles tot de eerste wordt gemarkeerd.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -578,6 +586,18 @@ function checkPin() {
 
 // ====================== MEDEWERKER-KEUZE ======================
 function getCurrentEmployee() { return sessionStorage.getItem(EMPLOYEE_KEY) || ''; }
+function getCurrentEmployeeRecord() {
+  const name=getCurrentEmployee(); if(!name) return null;
+  return (db.employees||[]).find(e=>e.name===name) || null;
+}
+function isCurrentUserOwner() {
+  // Failsafe: zolang er nog GEEN eigenaren in de DB staan, mag iedereen alles.
+  // Anders kan de eerste eigenaar zichzelf nooit markeren.
+  const anyOwner = (db.employees||[]).some(e=>e.isOwner);
+  if(!anyOwner) return true;
+  const emp=getCurrentEmployeeRecord();
+  return !!(emp && emp.isOwner);
+}
 function setCurrentEmployee(name) {
   if(name) sessionStorage.setItem(EMPLOYEE_KEY, name);
   else sessionStorage.removeItem(EMPLOYEE_KEY);
@@ -588,11 +608,15 @@ function renderEmployeeBadge() {
   const badge=document.getElementById('emp-badge');
   if(!badge) return;
   if(cur) {
-    document.getElementById('emp-badge-name').textContent=cur;
+    const isOwner=isCurrentUserOwner();
+    document.getElementById('emp-badge-name').textContent=cur+(isOwner?' 👑':'');
     badge.style.display='inline-flex';
   } else {
     badge.style.display='none';
   }
+  // Settings-tab tonen/verbergen op basis van rol
+  const tab=document.getElementById('tab-settings');
+  if(tab) tab.style.display=isCurrentUserOwner()?'':'none';
 }
 function checkEmployee() {
   // Wordt aangeroepen na pin-unlock en na loadAll().
@@ -715,7 +739,7 @@ async function loadAll() {
     db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||''}));
-    db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false}));
+    db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false,isOwner:r.is_owner===true}));
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
@@ -783,7 +807,12 @@ function openModal(id) {
   if(inner) inner.scrollTop=0;
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-function openFab() { openModal('modal-fab'); }
+function openFab() {
+  const isOwner=isCurrentUserOwner();
+  document.getElementById('fab-product').style.display=isOwner?'':'none';
+  document.getElementById('fab-supplier').style.display=isOwner?'':'none';
+  openModal('modal-fab');
+}
 function stepVal(id,d) { const el=document.getElementById(id); el.value=Math.max(1,(parseInt(el.value)||1)+d); }
 function fillCatSelect(id) { document.getElementById(id).innerHTML=db.categories.map(c=>`<option>${c}</option>`).join(''); }
 function fillSupplierSelect(id) { document.getElementById(id).innerHTML=db.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); }
@@ -791,6 +820,10 @@ function fillSupplierSelect(id) { document.getElementById(id).innerHTML=db.suppl
 // ====================== ROUTING ======================
 let currentPage='dashboard';
 function setPage(p) {
+  // Settings alleen voor eigenaren — bij staff-poging direct naar dashboard
+  if(p==='settings' && !isCurrentUserOwner()) p='dashboard';
+  const tab=document.getElementById('tab-settings');
+  if(tab) tab.style.display=isCurrentUserOwner()?'':'none';
   currentPage=p;
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
@@ -862,6 +895,7 @@ function renderStock() {
     prods.map(p=>{
       const [bc,bl]=stockStatus(p);
       const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
+      const isOwner=isCurrentUserOwner();
       return `<div class="card">
         <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
           <span class="card-title">${p.name}</span>
@@ -870,9 +904,9 @@ function renderStock() {
         ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-          <button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>
+          ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
           <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
-          <button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>
+          ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
           <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
         </div>
       </div>`;
@@ -948,8 +982,8 @@ function renderOrders() {
         <div class="sup-block-footer">
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="exportSupOrder(${s.id})">📤 Exporteer</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="waSupOrder(${s.id})">💬 WhatsApp</button>
-          <button class="btn ${allOrdered?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:7px 12px" onclick="markSupOrdered(${s.id})">${allOrdered?'↩️ Reset':'✓ Markeer besteld'}</button>
-          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>
+          ${isCurrentUserOwner()?`<button class="btn ${allOrdered?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:7px 12px" onclick="markSupOrdered(${s.id})">${allOrdered?'↩️ Reset':'✓ Markeer besteld'}</button>
+          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>`:''}
           <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 Bel</a>
         </div>
       </div>`;
@@ -1650,8 +1684,8 @@ function openProductDetail(id) {
     ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
     ${renderColorBlock(p.id)}
     <div class="btn-row">
-      <button class="btn btn-secondary" onclick="closeModal('modal-detail');openProductModal(${p.id})">✏️ Bewerken</button>
-      <button class="btn btn-secondary" onclick="closeModal('modal-detail');duplicateProduct(${p.id})">⧉ Dupliceer</button>
+      ${isCurrentUserOwner()?`<button class="btn btn-secondary" onclick="closeModal('modal-detail');openProductModal(${p.id})">✏️ Bewerken</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-detail');duplicateProduct(${p.id})">⧉ Dupliceer</button>`:''}
       <button class="btn btn-danger" onclick="closeModal('modal-detail');openIssueModal('out')">▼ Uitg.</button>
       <button class="btn btn-green" onclick="closeModal('modal-detail');openIssueModal('in')">▲ Retour</button>
     </div>
@@ -1792,7 +1826,8 @@ function renderSettings() {
     const emps=db.employees||[];
     empEl.innerHTML=emps.length===0?'<div class="empty" style="padding:10px 0">Nog geen medewerkers</div>':
       emps.map(e=>`<div class="cat-tag" style="${e.active?'':'opacity:.5'}">
-        <span class="cat-name">👤 ${e.name}${e.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
+        <span class="cat-name">${e.isOwner?'👑':'👤'} ${e.name}${e.isOwner?' <span style="font-size:10px;color:var(--accent);font-weight:600">eigenaar</span>':''}${e.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
+        <button class="cat-del" style="color:var(--accent2);font-size:14px;margin-right:4px" onclick="toggleEmployeeOwner(${e.id})" title="${e.isOwner?'Eigenaar-rol intrekken':'Tot eigenaar maken'}">${e.isOwner?'⬇':'⬆'}</button>
         <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editEmployee(${e.id})">✏️</button>
         <button class="cat-del" onclick="toggleEmployeeActive(${e.id})" title="${e.active?'Op inactief zetten':'Heractiveren'}">${e.active?'⊘':'↺'}</button>
         <button class="cat-del" onclick="deleteEmployee(${e.id})">×</button>
@@ -1826,6 +1861,19 @@ async function toggleEmployeeActive(id) {
   await dbPatch('employees', `id=eq.${id}`, {active:!e.active});
   await loadAll(); renderSettings();
 }
+async function toggleEmployeeOwner(id) {
+  const e=(db.employees||[]).find(x=>x.id===id); if(!e) return;
+  const newVal=!e.isOwner;
+  // Beveiliging: blokkeer het intrekken van de laatste eigenaar
+  if(!newVal) {
+    const owners=(db.employees||[]).filter(x=>x.isOwner);
+    if(owners.length<=1) { alert('Kan de laatste eigenaar niet intrekken — anders kan niemand meer de instellingen beheren.'); return; }
+  }
+  if(!confirm(newVal?`"${e.name}" tot eigenaar maken?\n\nKrijgt toegang tot alle voorraadmutaties, instellingen en boekingen corrigeren.`:`Eigenaar-rol van "${e.name}" intrekken?\n\nKan alleen nog materiaal uitgeven en retourneren.`)) return;
+  setSyncing('syncing');
+  await dbPatch('employees', `id=eq.${id}`, {is_owner:newVal});
+  await loadAll(); renderSettings();
+}
 async function deleteEmployee(id) {
   const e=(db.employees||[]).find(x=>x.id===id); if(!e) return;
   if(!confirm(`Medewerker "${e.name}" verwijderen?\n\nLet op: historische boekingen blijven bewaard met de naam erin — alleen de keuze in dropdown verdwijnt.`)) return;
@@ -1844,6 +1892,10 @@ function historyStockDelta(type, qty) {
 }
 
 function openHistoryEdit(histId) {
+  if(!isCurrentUserOwner()) {
+    alert('Alleen eigenaren mogen boekingen corrigeren — vraag Gian of Max.');
+    return;
+  }
   const h=db.history.find(x=>x.id===histId); if(!h) return;
   document.getElementById('hist-edit-id').value=h.id;
   document.getElementById('hist-edit-employee').value=h.employee||'';
