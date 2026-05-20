@@ -4,8 +4,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.5.1 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-19                                        ║
+  ║  Versie: 2.5.2 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-20                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -534,17 +534,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.5.1';
-const BUILD_DATE = '2026-05-19';
+const APP_VERSION = '2.5.2';
+const BUILD_DATE = '2026-05-20';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — eigenaar-pin bescherming:<br><br>
-  • <strong>Pin-prompt bij wisselen naar eigenaar</strong> — als iemand via de badge rechtsboven probeert te wisselen naar Gian of Max, wordt een aparte eigenaar-pin gevraagd. Staff kan niet meer ongezien promoveren.<br>
-  • <strong>OWNER_PIN constante</strong> — in het script bovenin staat de pin als constante (standaard \`1234\`). Wijzig 'm voor je deployt en deel alleen met Max.<br>
-  • Wisselen naar staff (Bjorn, Jens) blijft vrij — geen pin nodig.
+  <strong>Welkom bij v${APP_VERSION}</strong> — project-export fix:<br><br>
+  • <strong>Kleurcodes in export</strong> — bij elke materiaalregel in de project-export staat nu de kleur achter de naam (bv. "Rubbol BL Rezisto Satin · RAL 9001"). Geen blind varen meer bij meerdere kleuren in één project.<br>
+  • <strong>Bugfix grouping</strong> — export groepeerde voorheen op productnaam, waardoor twee kleurvarianten van hetzelfde product (bv. Rubbol BL Rezisto Satin in RAL 9001 én RAL 9010) als één regel werden samengeteld. Nu groepeert 'ie op productId, dus elke kleur staat correct op zijn eigen regel.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1812,22 +1811,28 @@ function exportProject(id) {
   const p=db.projects.find(x=>x.id===id); if(!p) return;
   const lines=db.history.filter(h=>h.projectId===id);
 
-  // Groepeer per product: uit en retour apart bijhouden
+  // Groepeer per productId (niet per naam!) — datamodel: 1 product = 1 kleur,
+  // dus producten met dezelfde naam maar andere kleur zijn aparte regels in de export.
   const grouped={};
   lines.forEach(h=>{
     const pr=db.products.find(x=>x.id===h.productId);
-    const naam=pr?pr.name:'Onbekend';
-    if(!grouped[naam]) grouped[naam]={out:0,ret:0,unit:pr?pr.unit:'stuk',prijs:pr?pr.price:0};
-    if(h.type==='out') grouped[naam].out += h.qty;
-    else grouped[naam].ret += h.qty;
+    if(!pr) return;
+    const key=h.productId;
+    if(!grouped[key]) {
+      const kleur=(Array.isArray(pr.color_codes)&&pr.color_codes.length)?pr.color_codes[0]:'';
+      const label=pr.name+(kleur?' · '+kleur:'');
+      grouped[key]={out:0,ret:0,unit:pr.unit,prijs:pr.price,label};
+    }
+    if(h.type==='out') grouped[key].out += h.qty;
+    else grouped[key].ret += h.qty;
   });
 
   const verbruikt=[], heenEnTerug=[], teveelRetour=[];
-  Object.entries(grouped).forEach(([naam,g])=>{
+  Object.values(grouped).forEach(g=>{
     const netto=g.out-g.ret;
-    if(netto>0) verbruikt.push({naam,qty:netto,unit:g.unit,prijs:g.prijs});
-    else if(netto===0 && g.out>0) heenEnTerug.push({naam,qty:g.out,unit:g.unit});
-    else if(netto<0) teveelRetour.push({naam,out:g.out,ret:g.ret,netto,unit:g.unit});
+    if(netto>0) verbruikt.push({naam:g.label,qty:netto,unit:g.unit,prijs:g.prijs});
+    else if(netto===0 && g.out>0) heenEnTerug.push({naam:g.label,qty:g.out,unit:g.unit});
+    else if(netto<0) teveelRetour.push({naam:g.label,out:g.out,ret:g.ret,netto,unit:g.unit});
   });
 
   let txt=`MATERIAALLIJST – ${p.name}\n`;
@@ -1839,7 +1844,7 @@ function exportProject(id) {
     verbruikt.forEach(({naam,qty,unit,prijs})=>{
       const subtotal=qty*prijs;
       totalCost+=subtotal;
-      txt+=`${naam.padEnd(35)} ${String(qty).padStart(4)} ${unit.padEnd(6)} €${subtotal.toFixed(2)}\n`;
+      txt+=`${naam.padEnd(45)} ${String(qty).padStart(4)} ${unit.padEnd(6)} €${subtotal.toFixed(2)}\n`;
     });
   } else {
     txt+='(geen netto verbruik)\n';
@@ -1852,7 +1857,7 @@ function exportProject(id) {
     txt+='\n'+'─'.repeat(40)+'\n';
     txt+='VOLLEDIG RETOUR ONTVANGEN\n';
     heenEnTerug.forEach(({naam,qty,unit})=>{
-      txt+=`${naam.padEnd(35)} ${qty} ${unit} heen / ${qty} ${unit} retour\n`;
+      txt+=`${naam.padEnd(45)} ${qty} ${unit} heen / ${qty} ${unit} retour\n`;
     });
   }
 
@@ -1860,7 +1865,7 @@ function exportProject(id) {
     txt+='\n'+'─'.repeat(40)+'\n';
     txt+='⚠️ MEER RETOUR DAN UITGEGEVEN (boekfout?)\n';
     teveelRetour.forEach(({naam,out,ret,netto,unit})=>{
-      txt+=`${naam.padEnd(35)} ${out} ${unit} heen / ${ret} ${unit} retour (saldo ${netto} ${unit})\n`;
+      txt+=`${naam.padEnd(45)} ${out} ${unit} heen / ${ret} ${unit} retour (saldo ${netto} ${unit})\n`;
     });
   }
 
