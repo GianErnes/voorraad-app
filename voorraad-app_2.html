@@ -4,7 +4,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.5.2 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.5.3 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-20                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -534,16 +534,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.5.2';
+const APP_VERSION = '2.5.3';
 const BUILD_DATE = '2026-05-20';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — project-export fix:<br><br>
-  • <strong>Kleurcodes in export</strong> — bij elke materiaalregel in de project-export staat nu de kleur achter de naam (bv. "Rubbol BL Rezisto Satin · RAL 9001"). Geen blind varen meer bij meerdere kleuren in één project.<br>
-  • <strong>Bugfix grouping</strong> — export groepeerde voorheen op productnaam, waardoor twee kleurvarianten van hetzelfde product (bv. Rubbol BL Rezisto Satin in RAL 9001 én RAL 9010) als één regel werden samengeteld. Nu groepeert 'ie op productId, dus elke kleur staat correct op zijn eigen regel.
+  <strong>Welkom bij v${APP_VERSION}</strong> — silent fail wegnemen:<br><br>
+  • <strong>Fout bij Product opslaan zichtbaar gemaakt</strong> — voorheen sloot de modal zonder feedback als de database de save weigerde (foreign key fout, ongeldige categorie, etc.). Nu krijg je een duidelijke foutmelding met de oorzaak van de DB, en blijft de modal open zodat je niet alles opnieuw hoeft te typen.<br>
+  • <strong>Globale vangnet</strong> — voor alle andere save/patch/delete-acties die mogelijk hetzelfde patroon hebben, vangt een wereldwijde error-handler nu silent fails op en toont een melding.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1279,10 +1279,16 @@ async function saveProduct() {
     color_codes:colorCodes
   };
   setSyncing('syncing');
-  if(editId) await dbPatch('products', `id=eq.${editId}`, data);
-  else await dbPost('products', data);
-  closeModal('modal-product');
-  await loadAll();
+  try {
+    if(editId) await dbPatch('products', `id=eq.${editId}`, data);
+    else await dbPost('products', data);
+    closeModal('modal-product');
+    await loadAll();
+  } catch(err) {
+    console.error('saveProduct error:', err);
+    setSyncing('error');
+    alert('Opslaan mislukt — product is NIET aangemaakt.\n\nFout van de database:\n' + (err.message || err) + '\n\nControleer de invoer (vooral leverancier en categorie) en probeer opnieuw. Modal blijft open zodat je niet alles opnieuw hoeft te typen.');
+  }
 }
 async function deleteProduct() {
   const editId=parseInt(document.getElementById('p-id').value)||null; if(!editId) return;
@@ -2232,6 +2238,15 @@ function exportData() {
 }
 
 // ====================== INIT ======================
+// Globale vangnet voor silent fails — als een save/patch/delete ergens misgaat zonder lokale try/catch
+// dan zien we 'm hier en krijgt de gebruiker een melding (ipv stilletjes mislukken).
+window.addEventListener('unhandledrejection', e => {
+  console.error('Onverwerkte fout:', e.reason);
+  setSyncing('error');
+  const msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+  alert('⚠️ Er ging iets mis — actie waarschijnlijk niet uitgevoerd.\n\nFout: ' + msg + '\n\nVernieuw de pagina als de app raar doet en probeer opnieuw.');
+});
+
 document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
 });
