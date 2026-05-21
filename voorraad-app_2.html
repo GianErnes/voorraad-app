@@ -1,11 +1,12 @@
 
+
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.5.3 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-20                                        ║
+  ║  Versie: 2.6.0 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-21                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -258,7 +259,9 @@
       <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
     <div class="chip-row" id="cat-filters"></div>
+    <div class="chip-row" id="sup-filters" style="margin-top:6px"></div>
     <div class="chip-row" id="min-filters" style="margin-top:6px"></div>
+    <div id="stock-action-bar" style="display:none;margin:10px 0"></div>
     <div id="stock-list"></div>
   </div>
   <div class="page" id="page-projects" style="padding-bottom:160px">
@@ -534,16 +537,17 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.5.3';
-const BUILD_DATE = '2026-05-20';
+const APP_VERSION = '2.6.0';
+const BUILD_DATE = '2026-05-21';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — silent fail wegnemen:<br><br>
-  • <strong>Fout bij Product opslaan zichtbaar gemaakt</strong> — voorheen sloot de modal zonder feedback als de database de save weigerde (foreign key fout, ongeldige categorie, etc.). Nu krijg je een duidelijke foutmelding met de oorzaak van de DB, en blijft de modal open zodat je niet alles opnieuw hoeft te typen.<br>
-  • <strong>Globale vangnet</strong> — voor alle andere save/patch/delete-acties die mogelijk hetzelfde patroon hebben, vangt een wereldwijde error-handler nu silent fails op en toont een melding.
+  <strong>Welkom bij v${APP_VERSION}</strong> — filter op leverancier:<br><br>
+  • <strong>Tweede chip-rij in Voorraad</strong> — onder de categorieën verschijnt een rij met leveranciers (alleen die producten hebben binnen je huidige selectie). Combineer met de categorie-filter om gericht door te kunnen kijken.<br>
+  • <strong>Prijsopvraag-knop</strong> — als je <em>💶 € 0,00</em> + een specifieke leverancier kiest, verschijnt boven de lijst een knop "📤 Vraag prijzen op bij [leverancier]". Klik 'm aan en je krijgt een kant-en-klare WhatsApp/email-tekst met de productenlijst om door te sturen.<br>
+  • <strong>Zonder-leverancier-filter</strong> — als er producten zijn zonder leverancier verschijnt een waarschuwingschip "⚠ Zonder leverancier" zodat je ze makkelijk kunt vinden en koppelen.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -925,6 +929,7 @@ function renderDashboard() {
 
 // ====================== STOCK ======================
 let activeCat='Alles';
+let activeSupplier='all';  // 'all' | supplierId | 'none' (zonder leverancier)
 function renderStock() {
   const activeCount=db.products.filter(p=>Number(p.min)>0).length;
   const allCount=db.products.length;
@@ -937,13 +942,52 @@ function renderStock() {
   ];
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c.key===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.key.replace(/"/g,'&quot;')}">${c.label}</div>`).join('');
   const minEl=document.getElementById('min-filters'); if(minEl) minEl.innerHTML='';
-  const search=(document.getElementById('stock-search')||{}).value||'';
+
+  // Eerste filterstap: categorie / virtuele categorie
   let prods;
   if(activeCat==='Alles') prods=db.products;
   else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
   else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
   else prods=db.products.filter(p=>p.cat===activeCat);
+
+  // Leveranciers-chips: alleen leveranciers met producten binnen de huidige categorie-selectie
+  const supCounts={};
+  let noSupCount=0;
+  prods.forEach(p=>{
+    if(p.supplier_id) supCounts[p.supplier_id]=(supCounts[p.supplier_id]||0)+1;
+    else noSupCount++;
+  });
+  const supsInScope=db.suppliers.filter(s=>supCounts[s.id]).sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+  const supChips=[
+    {key:'all', label:`Alle leveranciers (${prods.length})`},
+    ...supsInScope.map(s=>({key:String(s.id), label:`🏢 ${s.name} (${supCounts[s.id]})`})),
+    ...(noSupCount?[{key:'none', label:`⚠ Zonder leverancier (${noSupCount})`}]:[])
+  ];
+  document.getElementById('sup-filters').innerHTML=supChips.map(c=>`<div class="chip${c.key===activeSupplier?' active':''}" onclick="filterSup(this)" data-sup="${c.key}">${c.label}</div>`).join('');
+
+  // Reset activeSupplier als de huidige selectie niet meer voorkomt binnen de scope
+  if(activeSupplier!=='all' && activeSupplier!=='none' && !supCounts[parseInt(activeSupplier)]) activeSupplier='all';
+  if(activeSupplier==='none' && noSupCount===0) activeSupplier='all';
+
+  // Tweede filterstap: leverancier
+  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier_id);
+  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier_id===parseInt(activeSupplier));
+
+  // Derde filterstap: zoek
+  const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
+
+  // Prijsopvraag-knop: als €0,00 + een specifieke leverancier (niet 'all', niet 'none')
+  const actionBar=document.getElementById('stock-action-bar');
+  if(activeCat==='💶 € 0,00' && activeSupplier!=='all' && activeSupplier!=='none' && prods.length){
+    const sup=db.suppliers.find(s=>s.id===parseInt(activeSupplier));
+    actionBar.style.display='';
+    actionBar.innerHTML=`<button class="btn btn-primary btn-full" onclick="askPricesFromSupplier(${sup.id})">📤 Vraag prijzen op bij ${sup.name} (${prods.length} producten)</button>`;
+  } else {
+    actionBar.style.display='none';
+    actionBar.innerHTML='';
+  }
+
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
       const [bc,bl]=stockStatus(p);
@@ -965,7 +1009,32 @@ function renderStock() {
       </div>`;
     }).join('');
 }
-function filterCat(el) { activeCat=el.dataset.cat; renderStock(); }
+function filterCat(el) { activeCat=el.dataset.cat; activeSupplier='all'; renderStock(); }
+function filterSup(el) { activeSupplier=el.dataset.sup; renderStock(); }
+
+function askPricesFromSupplier(supplierId) {
+  const sup=db.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  // Zelfde productenset als momenteel zichtbaar opnieuw afleiden (consistent met renderStock)
+  let prods;
+  if(activeCat==='Alles') prods=db.products;
+  else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
+  else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
+  else prods=db.products.filter(p=>p.cat===activeCat);
+  prods=prods.filter(p=>p.supplier_id===supplierId);
+  const search=(document.getElementById('stock-search')||{}).value||'';
+  if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
+  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+
+  let txt=`Hi ${sup.name},\n\nKun je me een prijsopgave geven voor de volgende ${prods.length} ${prods.length===1?'product':'producten'}?\n\n`;
+  prods.forEach(p=>{
+    const kleur=(Array.isArray(p.color_codes)&&p.color_codes.length)?p.color_codes[0]:'';
+    const label=p.name+(kleur?' · '+kleur:'')+(p.factuur_naam?` (${p.factuur_naam})`:'');
+    txt+=`• ${label} — per ${p.unit}\n`;
+  });
+  txt+=`\nGraag prijs incl. BTW per ${prods[0]?prods[0].unit:'stuk'} of verpakking.\n\nGroet,\nErnes Schilders`;
+
+  shareOrCopy(txt, `Prijsopvraag ${sup.name}`);
+}
 
 function clearSearch() {
   document.getElementById('stock-search').value='';
