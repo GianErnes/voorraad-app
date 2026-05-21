@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.6.0 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.6.1 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-21                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -537,17 +537,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.6.1';
 const BUILD_DATE = '2026-05-21';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — filter op leverancier:<br><br>
-  • <strong>Tweede chip-rij in Voorraad</strong> — onder de categorieën verschijnt een rij met leveranciers (alleen die producten hebben binnen je huidige selectie). Combineer met de categorie-filter om gericht door te kunnen kijken.<br>
-  • <strong>Prijsopvraag-knop</strong> — als je <em>💶 € 0,00</em> + een specifieke leverancier kiest, verschijnt boven de lijst een knop "📤 Vraag prijzen op bij [leverancier]". Klik 'm aan en je krijgt een kant-en-klare WhatsApp/email-tekst met de productenlijst om door te sturen.<br>
-  • <strong>Zonder-leverancier-filter</strong> — als er producten zijn zonder leverancier verschijnt een waarschuwingschip "⚠ Zonder leverancier" zodat je ze makkelijk kunt vinden en koppelen.
+  <strong>Welkom bij v${APP_VERSION}</strong> — bugfix leverancier-filter:<br><br>
+  • <strong>Leverancier-chips lieten alle producten als "Zonder leverancier" zien</strong>, ook als er wel een leverancier was gekoppeld. Oorzaak: property-naam mismatch in de filter (gebruikte <code>supplier_id</code> terwijl in de app het veld <code>supplier</code> heet). Opgelost.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -954,7 +952,7 @@ function renderStock() {
   const supCounts={};
   let noSupCount=0;
   prods.forEach(p=>{
-    if(p.supplier_id) supCounts[p.supplier_id]=(supCounts[p.supplier_id]||0)+1;
+    if(p.supplier) supCounts[p.supplier]=(supCounts[p.supplier]||0)+1;
     else noSupCount++;
   });
   const supsInScope=db.suppliers.filter(s=>supCounts[s.id]).sort((a,b)=>a.name.localeCompare(b.name,'nl'));
@@ -970,8 +968,8 @@ function renderStock() {
   if(activeSupplier==='none' && noSupCount===0) activeSupplier='all';
 
   // Tweede filterstap: leverancier
-  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier_id);
-  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier_id===parseInt(activeSupplier));
+  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier);
+  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
 
   // Derde filterstap: zoek
   const search=(document.getElementById('stock-search')||{}).value||'';
@@ -1020,7 +1018,7 @@ function askPricesFromSupplier(supplierId) {
   else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
   else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
   else prods=db.products.filter(p=>p.cat===activeCat);
-  prods=prods.filter(p=>p.supplier_id===supplierId);
+  prods=prods.filter(p=>p.supplier===supplierId);
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
   prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
