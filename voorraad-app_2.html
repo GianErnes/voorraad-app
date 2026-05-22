@@ -5,8 +5,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.6.1 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-21                                        ║
+  ║  Versie: 2.6.2 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-22                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -537,15 +537,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.6.1';
-const BUILD_DATE = '2026-05-21';
+const APP_VERSION = '2.6.2';
+const BUILD_DATE = '2026-05-22';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — bugfix leverancier-filter:<br><br>
-  • <strong>Leverancier-chips lieten alle producten als "Zonder leverancier" zien</strong>, ook als er wel een leverancier was gekoppeld. Oorzaak: property-naam mismatch in de filter (gebruikte <code>supplier_id</code> terwijl in de app het veld <code>supplier</code> heet). Opgelost.
+  <strong>Welkom bij v${APP_VERSION}</strong> — cosmetische fix:<br><br>
+  • <strong>Geen rare lange decimalen meer</strong> bij "Items uitgegeven" op project-detail en project-kaart. Bv. <code>60.879999999999995</code> wordt nu netjes <code>60.88</code>. Klassieke JavaScript floating-point quirk bij het optellen van breukgetallen — opgelost met een <code>roundQty()</code> helper.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -821,6 +821,8 @@ function setupRealtime() {
 // ====================== HELPERS ======================
 function today() { return new Date().toISOString().slice(0,10); }
 function getWeek(d) { const j=new Date(d.getFullYear(),0,1); return Math.ceil((((d-j)/86400000)+j.getDay()+1)/7); }
+// Floating-point cleanup voor weergave: 60.879999999999995 → 60.88
+function roundQty(n) { return Math.round((Number(n)||0)*100)/100; }
 function supplierName(id) { const s=db.suppliers.find(s=>s.id===id); return s?s.name:'—'; }
 function orderQty(p) {
   const target=Number(p.target)||Number(p.min)||0;
@@ -1062,7 +1064,7 @@ function projCard(p) {
   const lines=db.history.filter(h=>h.projectId===p.id);
   const cost=lines.filter(h=>h.type==='out').reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0)
             -lines.filter(h=>h.type==='in').reduce((s,h)=>{const pr=db.products.find(x=>x.id===h.productId);return s+(pr?pr.price*h.qty:0);},0);
-  const issued=lines.filter(h=>h.type==='out').reduce((s,h)=>s+h.qty,0);
+  const issued=roundQty(lines.filter(h=>h.type==='out').reduce((s,h)=>s+h.qty,0));
   return `<div class="card" onclick="openProjDetail(${p.id})">
     <div class="card-row"><span class="card-title">${p.name}</span><span class="badge badge-blue">${p.status}</span></div>
     <div class="card-sub">${p.client} · ${p.date}</div>
@@ -1845,7 +1847,7 @@ function openProjDetail(id) {
   document.getElementById('detail-content').innerHTML=`
     <div class="card-sub" style="margin-bottom:12px">${p.client} · ${p.date} · <span class="badge badge-blue">${p.status}</span></div>
     <div class="stat-grid" style="margin-bottom:14px">
-      <div class="stat-card"><div class="stat-val">${out.reduce((s,h)=>s+h.qty,0)}</div><div class="stat-lbl">Items uitgegeven</div></div>
+      <div class="stat-card"><div class="stat-val">${roundQty(out.reduce((s,h)=>s+h.qty,0))}</div><div class="stat-lbl">Items uitgegeven</div></div>
       <div class="stat-card"><div class="stat-val" style="font-size:20px;color:var(--accent)">€${cost.toFixed(2)}</div><div class="stat-lbl">Materiaalkosten</div></div>
     </div>
     <div class="btn-row" style="margin-bottom:12px">
