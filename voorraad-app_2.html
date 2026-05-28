@@ -5,8 +5,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.6.2 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-22                                        ║
+  ║  Versie: 2.6.3 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-23                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -393,7 +393,7 @@
   <div class="modal">
     <div class="modal-title">Eigenaar-pin<span class="modal-close" onclick="cancelOwnerPin()">×</span></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px" id="owner-pin-target">Voer de eigenaar-pin in om te wisselen.</p>
-    <div class="form-group"><input id="owner-pin-input" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px;font-family:'JetBrains Mono',monospace"></div>
+    <div class="form-group"><input id="owner-pin-input" type="tel" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px;font-family:'JetBrains Mono',monospace;-webkit-text-security:disc;text-security:disc"></div>
     <div id="owner-pin-error" style="color:var(--accent);font-size:12px;margin-bottom:10px;min-height:16px"></div>
     <button class="btn btn-primary btn-full" onclick="confirmOwnerPin()">Bevestigen</button>
   </div>
@@ -537,15 +537,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.6.2';
-const BUILD_DATE = '2026-05-22';
+const APP_VERSION = '2.6.3';
+const BUILD_DATE = '2026-05-23';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — cosmetische fix:<br><br>
-  • <strong>Geen rare lange decimalen meer</strong> bij "Items uitgegeven" op project-detail en project-kaart. Bv. <code>60.879999999999995</code> wordt nu netjes <code>60.88</code>. Klassieke JavaScript floating-point quirk bij het optellen van breukgetallen — opgelost met een <code>roundQty()</code> helper.
+  <strong>Welkom bij v${APP_VERSION}</strong> — iOS toetsenbord-fix eigenaar-pin:<br><br>
+  • <strong>Toetsenbord verscheen niet</strong> bij het invoeren van de eigenaar-pin op iPhone. Oorzaak: combinatie van wachtwoord-veld + numeriek toetsenbord + automatische focus die iOS niet als echte tik herkende. Opgelost: het veld gebruikt nu een cijfer-toetsenbord (type=tel) met gemaskeerde invoer via CSS, en de focus gebeurt direct bij het openen. Lukt automatisch openen toch niet, dan opent één tik op het veld het cijfertoetsenbord.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -677,10 +677,14 @@ let _ownerPinCallback=null;
 function requestOwnerPin(name, callback) {
   _ownerPinCallback=callback;
   document.getElementById('owner-pin-target').textContent=`Voer de eigenaar-pin in om als "${name}" verder te gaan.`;
-  document.getElementById('owner-pin-input').value='';
+  const input=document.getElementById('owner-pin-input');
+  input.value='';
   document.getElementById('owner-pin-error').textContent='';
   openModal('modal-owner-pin');
-  setTimeout(()=>document.getElementById('owner-pin-input').focus(), 100);
+  // iOS opent het toetsenbord alleen bij een directe focus binnen de tik-actie.
+  // Daarom focus direct (geen setTimeout, dat verbreekt de user-gesture op iOS).
+  // Lukt het niet, dan tikt de gebruiker zelf op het veld — type=tel toont dan het cijfertoetsenbord.
+  try { input.focus({preventScroll:true}); } catch(e) { input.focus(); }
 }
 function confirmOwnerPin() {
   const v=document.getElementById('owner-pin-input').value;
