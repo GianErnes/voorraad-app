@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.6.3 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.0 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-23                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -261,6 +261,7 @@
     <div class="chip-row" id="cat-filters"></div>
     <div class="chip-row" id="sup-filters" style="margin-top:6px"></div>
     <div class="chip-row" id="min-filters" style="margin-top:6px"></div>
+    <div id="stock-summary-bar" style="display:none;margin:10px 0"></div>
     <div id="stock-action-bar" style="display:none;margin:10px 0"></div>
     <div id="stock-list"></div>
   </div>
@@ -537,15 +538,17 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.6.3';
+const APP_VERSION = '2.7.0';
 const BUILD_DATE = '2026-05-23';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — iOS toetsenbord-fix eigenaar-pin:<br><br>
-  • <strong>Toetsenbord verscheen niet</strong> bij het invoeren van de eigenaar-pin op iPhone. Oorzaak: combinatie van wachtwoord-veld + numeriek toetsenbord + automatische focus die iOS niet als echte tik herkende. Opgelost: het veld gebruikt nu een cijfer-toetsenbord (type=tel) met gemaskeerde invoer via CSS, en de focus gebeurt direct bij het openen. Lukt automatisch openen toch niet, dan opent één tik op het veld het cijfertoetsenbord.
+  <strong>Welkom bij v${APP_VERSION}</strong> — voorraadwaardering:<br><br>
+  • <strong>Waarde-balk in voorraadlijst</strong> — boven de productenlijst staat altijd <em>"X producten · waarde €Y,YY"</em> voor de huidige selectie. Combineer met de bestaande filters (Actief, categorie, leverancier) om elke gewenste subgroep te waarderen.<br>
+  • <strong>Knop "📤 Exporteer waardering"</strong> — genereert een nette tekst per regel (productnaam · kleur, voorraad, prijs, waarde) met totaal eronder. Direct deelbaar met de boekhouder via WhatsApp/email.<br>
+  • <strong>Waarschuwing bij producten zonder prijs</strong> — in de balk verschijnt <em>"⚠ X zonder prijs"</em> als er nog producten zijn die de totaalwaarde drukken. Die tellen voor €0 mee.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -981,6 +984,19 @@ function renderStock() {
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
 
+  // Summary-bar: aantal producten + totale waarde van huidige selectie
+  const sumBar=document.getElementById('stock-summary-bar');
+  if(prods.length){
+    const totalValue=prods.reduce((s,p)=>s+(Number(p.qty)||0)*(Number(p.price)||0),0);
+    const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
+    const warning=zonderPrijs?` <span style="color:var(--accent)">⚠ ${zonderPrijs} zonder prijs</span>`:'';
+    sumBar.style.display='';
+    sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Exporteer waardering</button>`:''}</div></div>`;
+  } else {
+    sumBar.style.display='none';
+    sumBar.innerHTML='';
+  }
+
   // Prijsopvraag-knop: als €0,00 + een specifieke leverancier (niet 'all', niet 'none')
   const actionBar=document.getElementById('stock-action-bar');
   if(activeCat==='💶 € 0,00' && activeSupplier!=='all' && activeSupplier!=='none' && prods.length){
@@ -1038,6 +1054,60 @@ function askPricesFromSupplier(supplierId) {
   txt+=`\nGraag prijs incl. BTW per ${prods[0]?prods[0].unit:'stuk'} of verpakking.\n\nGroet,\nErnes Schilders`;
 
   shareOrCopy(txt, `Prijsopvraag ${sup.name}`);
+}
+
+function exportStockValuation() {
+  // Pas dezelfde filterketen toe als renderStock (consistent met wat op scherm staat)
+  let prods;
+  if(activeCat==='Alles') prods=db.products;
+  else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
+  else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
+  else prods=db.products.filter(p=>p.cat===activeCat);
+  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier);
+  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
+  const search=(document.getElementById('stock-search')||{}).value||'';
+  if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
+  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+
+  // Filter-omschrijving voor de header
+  const filterLabels=[];
+  if(activeCat!=='Alles') filterLabels.push(activeCat);
+  if(activeSupplier!=='all') {
+    if(activeSupplier==='none') filterLabels.push('Zonder leverancier');
+    else { const s=db.suppliers.find(s=>s.id===parseInt(activeSupplier)); if(s) filterLabels.push('Leverancier: '+s.name); }
+  }
+  if(search.trim()) filterLabels.push(`Zoek: "${search.trim()}"`);
+  const filterTxt=filterLabels.length?filterLabels.join(' · '):'Alle producten';
+
+  let txt=`VOORRAADWAARDERING – Ernes Schilders\n`;
+  txt+=`Datum: ${today()}\nFilter: ${filterTxt}\n`;
+  txt+='─'.repeat(60)+'\n\n';
+
+  let totalValue=0;
+  let totalCount=0;
+  let zonderPrijs=0;
+  prods.forEach(p=>{
+    const qty=Number(p.qty)||0;
+    const price=Number(p.price)||0;
+    const value=qty*price;
+    totalValue+=value;
+    totalCount++;
+    if(!price) zonderPrijs++;
+    const kleur=(Array.isArray(p.color_codes)&&p.color_codes.length)?p.color_codes[0]:'';
+    const label=(p.name+(kleur?' · '+kleur:'')).padEnd(50).slice(0,50);
+    const qtyStr=String(qty).padStart(6);
+    const unitStr=(p.unit||'').padEnd(6);
+    const priceStr=`€${price.toFixed(2)}`.padStart(8);
+    const valStr=`€${value.toFixed(2)}`.padStart(10);
+    txt+=`${label} ${qtyStr} ${unitStr} × ${priceStr} = ${valStr}\n`;
+  });
+
+  txt+='\n'+'─'.repeat(60)+'\n';
+  txt+=`Totaal producten: ${totalCount}\n`;
+  txt+=`Totale voorraadwaarde: €${totalValue.toFixed(2)}\n`;
+  if(zonderPrijs) txt+=`⚠ ${zonderPrijs} producten zonder prijs (niet meegerekend)\n`;
+
+  shareOrCopy(txt, `Voorraadwaardering ${today()}`);
 }
 
 function clearSearch() {
