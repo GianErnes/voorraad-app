@@ -5,8 +5,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.0 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-05-23                                        ║
+  ║  Versie: 2.7.1 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-05-29                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -538,17 +538,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.0';
-const BUILD_DATE = '2026-05-23';
+const APP_VERSION = '2.7.1';
+const BUILD_DATE = '2026-05-29';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — voorraadwaardering:<br><br>
-  • <strong>Waarde-balk in voorraadlijst</strong> — boven de productenlijst staat altijd <em>"X producten · waarde €Y,YY"</em> voor de huidige selectie. Combineer met de bestaande filters (Actief, categorie, leverancier) om elke gewenste subgroep te waarderen.<br>
-  • <strong>Knop "📤 Exporteer waardering"</strong> — genereert een nette tekst per regel (productnaam · kleur, voorraad, prijs, waarde) met totaal eronder. Direct deelbaar met de boekhouder via WhatsApp/email.<br>
-  • <strong>Waarschuwing bij producten zonder prijs</strong> — in de balk verschijnt <em>"⚠ X zonder prijs"</em> als er nog producten zijn die de totaalwaarde drukken. Die tellen voor €0 mee.
+  <strong>Welkom bij v${APP_VERSION}</strong> — werkblad-export voor de boekhouder:<br><br>
+  • <strong>Tweede exportknop: 📊 Werkblad</strong> — naast "📤 Tekst" staat nu een knop die een CSV-bestand genereert (te openen in Excel/Numbers/Google Sheets). Kolommen: Product · Kleur · Categorie · Leverancier · Voorraad · Eenheid · Prijs · Waarde, plus een Totaal-regel onderaan.<br>
+  • <strong>Direct delen vanaf iPhone</strong> via de share-sheet (Mail, AirDrop, Files etc.). Op desktop downloadt 'ie meteen.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -991,7 +990,7 @@ function renderStock() {
     const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
     const warning=zonderPrijs?` <span style="color:var(--accent)">⚠ ${zonderPrijs} zonder prijs</span>`:'';
     sumBar.style.display='';
-    sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Exporteer waardering</button>`:''}</div></div>`;
+    sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Tekst</button><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuationCSV()">📊 Werkblad</button></div>`:''}</div></div>`;
   } else {
     sumBar.style.display='none';
     sumBar.innerHTML='';
@@ -1108,6 +1107,62 @@ function exportStockValuation() {
   if(zonderPrijs) txt+=`⚠ ${zonderPrijs} producten zonder prijs (niet meegerekend)\n`;
 
   shareOrCopy(txt, `Voorraadwaardering ${today()}`);
+}
+
+function exportStockValuationCSV() {
+  // Pas dezelfde filterketen toe als renderStock
+  let prods;
+  if(activeCat==='Alles') prods=db.products;
+  else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
+  else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
+  else prods=db.products.filter(p=>p.cat===activeCat);
+  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier);
+  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
+  const search=(document.getElementById('stock-search')||{}).value||'';
+  if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
+  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+
+  // CSV escaping: alleen quote wanneer nodig
+  const esc=v=>{
+    const s=String(v==null?'':v);
+    return /[",\n;]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+
+  // Header-rij + data-rijen. Komma als delimiter, punt als decimaal (standaard CSV).
+  const rows=[['Product','Kleur','Categorie','Leverancier','Voorraad','Eenheid','Prijs','Waarde']];
+  let totalValue=0;
+  prods.forEach(p=>{
+    const qty=Number(p.qty)||0;
+    const price=Number(p.price)||0;
+    const value=qty*price;
+    totalValue+=value;
+    const sup=p.supplier?db.suppliers.find(s=>s.id===p.supplier):null;
+    const kleur=(Array.isArray(p.color_codes)&&p.color_codes.length)?p.color_codes[0]:'';
+    rows.push([
+      p.name, kleur, p.cat||'', sup?sup.name:'', qty, p.unit||'',
+      price.toFixed(2), value.toFixed(2)
+    ]);
+  });
+  // Totaal-regel onderaan voor convenience
+  rows.push(['','','','','','','Totaal', totalValue.toFixed(2)]);
+
+  // BOM zodat Excel UTF-8 correct interpreteert (kleurcodes, speciale tekens)
+  const csv='\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\n');
+  const filename=`voorraadwaardering_${today()}.csv`;
+  const blob=new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const file=new File([blob], filename, {type:'text/csv'});
+
+  // Probeer file-share (iOS/Android: opent share-sheet met Mail/Drive/Files)
+  if(navigator.canShare && navigator.canShare({files:[file]})) {
+    navigator.share({files:[file], title:'Voorraadwaardering'}).catch(()=>{/* user cancelled */});
+  } else {
+    // Fallback: download via blob URL (desktop)
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
 }
 
 function clearSearch() {
