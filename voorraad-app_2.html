@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.1 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.2 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-29                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -538,16 +538,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.7.2';
 const BUILD_DATE = '2026-05-29';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — werkblad-export voor de boekhouder:<br><br>
-  • <strong>Tweede exportknop: 📊 Werkblad</strong> — naast "📤 Tekst" staat nu een knop die een CSV-bestand genereert (te openen in Excel/Numbers/Google Sheets). Kolommen: Product · Kleur · Categorie · Leverancier · Voorraad · Eenheid · Prijs · Waarde, plus een Totaal-regel onderaan.<br>
-  • <strong>Direct delen vanaf iPhone</strong> via de share-sheet (Mail, AirDrop, Files etc.). Op desktop downloadt 'ie meteen.
+  <strong>Welkom bij v${APP_VERSION}</strong> — werkblad-export robuuster op iPhone:<br><br>
+  • <strong>Werkblad-knop opende voorheen alleen een viewer</strong> waar je een app moest kiezen — Safari accepteerde de CSV niet altijd in de share-sheet. Logica is nu gelaagd: probeer eerst echte file-share, dan download via blob, en als ultieme fallback de CSV-inhoud als tekst (boekhouder kan dan plakken in Excel).
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1109,7 +1108,7 @@ function exportStockValuation() {
   shareOrCopy(txt, `Voorraadwaardering ${today()}`);
 }
 
-function exportStockValuationCSV() {
+async function exportStockValuationCSV() {
   // Pas dezelfde filterketen toe als renderStock
   let prods;
   if(activeCat==='Alles') prods=db.products;
@@ -1122,13 +1121,12 @@ function exportStockValuationCSV() {
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
   prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
 
-  // CSV escaping: alleen quote wanneer nodig
+  // CSV escaping
   const esc=v=>{
     const s=String(v==null?'':v);
     return /[",\n;]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
   };
 
-  // Header-rij + data-rijen. Komma als delimiter, punt als decimaal (standaard CSV).
   const rows=[['Product','Kleur','Categorie','Leverancier','Voorraad','Eenheid','Prijs','Waarde']];
   let totalValue=0;
   prods.forEach(p=>{
@@ -1143,26 +1141,36 @@ function exportStockValuationCSV() {
       price.toFixed(2), value.toFixed(2)
     ]);
   });
-  // Totaal-regel onderaan voor convenience
   rows.push(['','','','','','','Totaal', totalValue.toFixed(2)]);
 
-  // BOM zodat Excel UTF-8 correct interpreteert (kleurcodes, speciale tekens)
   const csv='\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\n');
   const filename=`voorraadwaardering_${today()}.csv`;
   const blob=new Blob([csv], {type:'text/csv;charset=utf-8'});
   const file=new File([blob], filename, {type:'text/csv'});
 
-  // Probeer file-share (iOS/Android: opent share-sheet met Mail/Drive/Files)
-  if(navigator.canShare && navigator.canShare({files:[file]})) {
-    navigator.share({files:[file], title:'Voorraadwaardering'}).catch(()=>{/* user cancelled */});
-  } else {
-    // Fallback: download via blob URL (desktop)
+  // Pad 1: file-share via Web Share API (werkt op moderne iOS/Android share-sheet)
+  if(navigator.share) {
+    try {
+      await navigator.share({files:[file], title:'Voorraadwaardering'});
+      return;
+    } catch(e) {
+      if(e.name==='AbortError') return; // gebruiker annuleerde
+      // anders: door naar fallback
+    }
+  }
+
+  // Pad 2: download via blob URL (werkt op desktop, soms iOS)
+  try {
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url; a.download=filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  }
+    return;
+  } catch(e) { /* door naar volgende */ }
+
+  // Pad 3: deel CSV-inhoud als tekst (boekhouder kan in Excel plakken via Plakken Speciaal)
+  shareOrCopy(csv, `Voorraadwaardering ${today()}`);
 }
 
 function clearSearch() {
