@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.2 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.3 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-05-29                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -538,15 +538,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.2';
+const APP_VERSION = '2.7.3';
 const BUILD_DATE = '2026-05-29';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — werkblad-export robuuster op iPhone:<br><br>
-  • <strong>Werkblad-knop opende voorheen alleen een viewer</strong> waar je een app moest kiezen — Safari accepteerde de CSV niet altijd in de share-sheet. Logica is nu gelaagd: probeer eerst echte file-share, dan download via blob, en als ultieme fallback de CSV-inhoud als tekst (boekhouder kan dan plakken in Excel).
+  <strong>Welkom bij v${APP_VERSION}</strong> — sortering hersteld:<br><br>
+  • <strong>Voorraadlijst sorteert nu weer alfabetisch op naam</strong>, en binnen dezelfde productnaam op kleurcode. RAL-codes worden numeriek vergeleken zodat RAL 9001 vóór RAL 9010 komt (en niet ervoor zoals bij pure alfabetische sortering zou gebeuren).
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -797,6 +797,15 @@ async function loadAll() {
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
     db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
+    // Sorteer producten alfabetisch op naam, en binnen dezelfde naam op kleurcode
+    // (numeric=true zorgt dat RAL 9010 ná RAL 9001 komt, niet ervoor)
+    db.products.sort((a,b)=>{
+      const nameCmp = a.name.localeCompare(b.name,'nl',{numeric:true,sensitivity:'base'});
+      if(nameCmp!==0) return nameCmp;
+      const ca = (a.color_codes && a.color_codes[0]) || '';
+      const cb = (b.color_codes && b.color_codes[0]) || '';
+      return ca.localeCompare(cb,'nl',{numeric:true,sensitivity:'base'});
+    });
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
     db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||''}));
     db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false,isOwner:r.is_owner===true}));
