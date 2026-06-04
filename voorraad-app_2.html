@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.4 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.5 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-06-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -538,16 +538,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.4';
+const APP_VERSION = '2.7.5';
 const BUILD_DATE = '2026-06-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — verder terugkijken in het logboek:<br><br>
-  • <strong>"Toon meer geschiedenis"-knop</strong> onderaan de dashboard-activiteit. Standaard tonen we de laatste 8 boekingen; elke klik laadt 30 oudere erbij. Aan de knop zie je hoeveel je nu ziet en hoeveel er nog over zijn ("8 van 1234").<br>
-  • <strong>"Inklappen"</strong> verschijnt als je uitgebreid hebt, klap je weer netjes terug naar de korte versie.
+  <strong>Welkom bij v${APP_VERSION}</strong> — Inklappen-knop fix:<br><br>
+  • <strong>Inklap-knop verscheen alleen als alle geschiedenis geladen was</strong> — fout in mijn logica van v2.7.4. Nu verschijnt 'Inklappen' altijd zodra je hebt uitgebreid, naast de 'Toon meer'-knop. Klik 'Inklappen' om terug te keren naar de korte lijst.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -942,8 +941,11 @@ function renderDashboard() {
         <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${codes}${projText}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join('') +
-    (moreLeft>0 ? `<div style="text-align:center;padding:14px 0"><button class="btn btn-secondary" style="font-size:13px" onclick="showMoreRecent()">📜 Toon meer geschiedenis (${recent.length} van ${totalHist})</button></div>` :
-     (dashboardRecentLimit>8 ? `<div style="text-align:center;padding:14px 0"><button class="btn btn-secondary" style="font-size:13px" onclick="resetRecentLimit()">Inklappen</button></div>` : ''));
+    `<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
+      moreLeft>0 ? `<button class="btn btn-secondary" style="font-size:13px" onclick="showMoreRecent()">📜 Toon meer geschiedenis (${recent.length} van ${totalHist})</button>` : ''
+    }${
+      dashboardRecentLimit>8 ? `<button class="btn btn-secondary" style="font-size:13px" onclick="resetRecentLimit()">Inklappen</button>` : ''
+    }</div>`;
   document.getElementById('recent-activity').innerHTML=recentHtml;
 }
 
