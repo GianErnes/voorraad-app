@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.5 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.6 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-06-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -538,15 +538,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.5';
+const APP_VERSION = '2.7.6';
 const BUILD_DATE = '2026-06-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — Inklappen-knop fix:<br><br>
-  • <strong>Inklap-knop verscheen alleen als alle geschiedenis geladen was</strong> — fout in mijn logica van v2.7.4. Nu verschijnt 'Inklappen' altijd zodra je hebt uitgebreid, naast de 'Toon meer'-knop. Klik 'Inklappen' om terug te keren naar de korte lijst.
+  <strong>Welkom bij v${APP_VERSION}</strong> — sortering kleurnummers nu écht overal:<br><br>
+  • <strong>In Voorraad tijdens zoeken</strong> stonden producten met dezelfde naam soms niet op kleur gesorteerd, terwijl het bij Materiaal Uitgeven wel goed ging. Sortering is nu expliciet bij elke render — voorraadlijst, materiaal uitgeven, prijsopvraag-tekst, tekst-export en CSV-export gebruiken dezelfde sorteer-regel (naam alfabetisch, daarbinnen kleurcode numeriek zodat RAL 9001 vóór RAL 9010 komt).
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1003,6 +1003,10 @@ function renderStock() {
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
 
+  // Sorteer expliciet — voor wanneer de filter naar prods een nieuwe array maakt
+  // die niet meer per definitie de db.products-volgorde aanhoudt
+  sortProductsByNameColor(prods=prods.slice());
+
   // Summary-bar: aantal producten + totale waarde van huidige selectie
   const sumBar=document.getElementById('stock-summary-bar');
   if(prods.length){
@@ -1062,7 +1066,7 @@ function askPricesFromSupplier(supplierId) {
   prods=prods.filter(p=>p.supplier===supplierId);
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
-  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+  sortProductsByNameColor(prods);
 
   let txt=`Hi ${sup.name},\n\nKun je me een prijsopgave geven voor de volgende ${prods.length} ${prods.length===1?'product':'producten'}?\n\n`;
   prods.forEach(p=>{
@@ -1086,7 +1090,7 @@ function exportStockValuation() {
   else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
-  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+  sortProductsByNameColor(prods);
 
   // Filter-omschrijving voor de header
   const filterLabels=[];
@@ -1140,7 +1144,7 @@ async function exportStockValuationCSV() {
   else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
   const search=(document.getElementById('stock-search')||{}).value||'';
   if(search.trim()) prods=prods.filter(p=>productMatchesSearch(p, search));
-  prods.sort((a,b)=>a.name.localeCompare(b.name,'nl'));
+  sortProductsByNameColor(prods);
 
   // CSV escaping
   const esc=v=>{
@@ -1712,6 +1716,16 @@ function renderIssueProductList(prods) {
 function normalizeForSearch(s) {
   return String(s||'').toLowerCase().replace(/[\s.\-_]/g,'');
 }
+function sortProductsByNameColor(prods) {
+  prods.sort((a,b)=>{
+    const nameCmp = a.name.localeCompare(b.name,'nl',{numeric:true,sensitivity:'base'});
+    if(nameCmp!==0) return nameCmp;
+    const ca = (a.color_codes && a.color_codes[0]) || '';
+    const cb = (b.color_codes && b.color_codes[0]) || '';
+    return ca.localeCompare(cb,'nl',{numeric:true,sensitivity:'base'});
+  });
+  return prods;
+}
 function productMatchesSearch(p, q) {
   const raw = (q||'').toLowerCase().trim();
   if(!raw) return true;
@@ -1826,6 +1840,7 @@ function renderColorBlock(productId) {
 function filterIssueProducts() {
   const q=document.getElementById('issue-search').value;
   const filtered=issueProducts.filter(p=>productMatchesSearch(p, q));
+  sortProductsByNameColor(filtered);
   renderIssueProductList(filtered);
 }
 
