@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.7 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.9 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-06-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -38,7 +38,7 @@
   ║    └─ OWNER_PIN constante: pin-prompt bij wisselen naar eigenaar     ║
   ║  • employee_name op history — wie heeft de boeking gedaan            ║
   ║    └─ employees tabel met CRUD via instellingen                      ║
-  ║    └─ sessieKeuze na pincode (modal-employee)                        ║
+  ║    └─ sessieKeuze bij app-start (modal-employee)                     ║
   ║    └─ wisselbare badge "👤 naam" rechtsboven in header               ║
   ║  • History-regel bewerken/verwijderen                                ║
   ║    └─ tik op item in dashboard / project-detail / product-historie   ║
@@ -55,7 +55,7 @@
   ║    └─ CHANGELOG_HTML constante voor "Wat is nieuw"                   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
-  ║  • Pincode: 6422 (sessionStorage)                                    ║
+  ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
   ║  • Polling sync: 10 seconden                                         ║
   ║  • Stijl: wit, accent #e63946, Inter + JetBrains Mono                ║
   ║  • Step 0.125 + decimalen waar relevant                              ║
@@ -194,34 +194,6 @@
 </style>
 </head>
 <body>
-
-<!-- PINCODE SCHERM -->
-<div id="pin-screen" style="position:fixed;inset:0;background:var(--bg);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
-  <div style="font-size:36px">🎨</div>
-  <div style="font-size:22px;font-weight:600;color:var(--text)">Ernes Schilders</div>
-  <div style="font-size:13px;color:var(--muted)">Voorraad App</div>
-  <div style="display:flex;gap:12px;margin:10px 0" id="pin-dots">
-    <div class="pin-dot"></div>
-    <div class="pin-dot"></div>
-    <div class="pin-dot"></div>
-    <div class="pin-dot"></div>
-  </div>
-  <div id="pin-error" style="font-size:13px;color:var(--red);height:18px;"></div>
-  <div style="display:grid;grid-template-columns:repeat(3,72px);gap:12px">
-    <button class="pin-btn" onclick="pinInput('1')">1</button>
-    <button class="pin-btn" onclick="pinInput('2')">2</button>
-    <button class="pin-btn" onclick="pinInput('3')">3</button>
-    <button class="pin-btn" onclick="pinInput('4')">4</button>
-    <button class="pin-btn" onclick="pinInput('5')">5</button>
-    <button class="pin-btn" onclick="pinInput('6')">6</button>
-    <button class="pin-btn" onclick="pinInput('7')">7</button>
-    <button class="pin-btn" onclick="pinInput('8')">8</button>
-    <button class="pin-btn" onclick="pinInput('9')">9</button>
-    <div></div>
-    <button class="pin-btn" onclick="pinInput('0')">0</button>
-    <button class="pin-btn" onclick="pinDelete()" style="font-size:18px">⌫</button>
-  </div>
-</div>
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
@@ -450,7 +422,7 @@
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper">
         <button onclick="stepIssueQty(-0.125)">−</button>
-        <input id="issue-qty" type="number" inputmode="decimal" value="1" min="0.125" step="0.125" onfocus="this.select()" onclick="this.select()" style="width:100px;text-align:center;font-weight:600;font-size:16px">
+        <input id="issue-qty" type="number" inputmode="decimal" value="1" min="0.125" step="0.125" onfocus="this.select();setTimeout(()=>this.scrollIntoView({block:'center',behavior:'smooth'}),350)" style="width:100px;text-align:center;font-weight:600;font-size:16px">
         <button onclick="stepIssueQty(0.125)">+</button>
         <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
       </div>
@@ -538,71 +510,34 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.7';
+const APP_VERSION = '2.7.9';
 const BUILD_DATE = '2026-06-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — sneller invoeren bij grote hoeveelheden:<br><br>
-  • <strong>Hoeveelheid-veld bij Materiaal Uitgeven / Retour is nu tikbaar</strong>. Tik op het getal in het midden → cijfertoetsenbord opent en het hele getal staat al geselecteerd, dus typ '50' en je hebt 50 liter. De +/- knoppen blijven bestaan voor fijne bijstelling per 0,125.<br>
-  • <strong>Komma én punt werken</strong> als decimaal — typ '12,5' of '12.5', allebei prima.
+  <strong>Welkom bij v${APP_VERSION}</strong> — één pincode in plaats van twee:<br><br>
+  • <strong>App-pin (oud: 6422 bij open) is afgeschaft</strong>. Bij openen van de app zie je direct "Wie ben jij vandaag" — geen extra cijfertoetsenbord meer vooraf.<br>
+  • <strong>Bjorn en Jens werken nu zonder enige pin</strong> — tik je naam en je bent aan de slag.<br>
+  • <strong>Eigenaar-pin blijft 7102</strong> — alleen Gian en Max kennen die. Het was niet handig geweest om hem op 6422 te zetten, want dat is de pin die het team al kende.<br>
+  • Eigenaar-rol blijft beveiligd: zonder 7102 geen toegang tot Instellingen of eigenaar-functies.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
-const CORRECT_PIN = '6422'; // ← Verander dit naar jullie eigen pincode
-const SESSION_KEY = 'ernes_unlocked';
 const EMPLOYEE_KEY = 'ernes_employee';
-// Eigenaar-pin: extra drempel voor wisselen naar een eigenaar-medewerker.
-// Wijzig dit getal voor je deployt — kies iets dat alleen Gian en Max weten.
+// Eigenaar-pin: drempel voor wisselen naar een eigenaar-medewerker (Gian/Max).
+// Sinds v2.7.9 de enige pin in de app — de oude algemene app-pin is afgeschaft.
+// Deze pin moet ALLEEN bij eigenaars bekend zijn — staff mag 'm niet weten,
+// anders kunnen ze zich als eigenaar voordoen.
 // LET OP: deze waarde staat in de publieke source. Voor jouw schaal voldoende
 // als drempel, maar niet als echte security tegen een gemotiveerde aanvaller.
 const OWNER_PIN = '7102';
-let pinEntry = '';
 
 function initSecurity() {
-  if(sessionStorage.getItem(SESSION_KEY) === 'yes') {
-    document.getElementById('pin-screen').style.display='none';
-    // pincode al ingevoerd; employee check gebeurt na loadAll() zodra db.employees binnen is
-  }
-}
-
-function pinInput(digit) {
-  if(pinEntry.length >= 4) return;
-  pinEntry += digit;
-  updatePinDots();
-  if(pinEntry.length === 4) {
-    setTimeout(checkPin, 150);
-  }
-}
-
-function pinDelete() {
-  pinEntry = pinEntry.slice(0,-1);
-  updatePinDots();
-  document.getElementById('pin-error').textContent='';
-}
-
-function updatePinDots() {
-  document.querySelectorAll('.pin-dot').forEach((dot,i)=>{
-    dot.classList.toggle('filled', i < pinEntry.length);
-  });
-}
-
-function checkPin() {
-  if(pinEntry === CORRECT_PIN) {
-    sessionStorage.setItem(SESSION_KEY,'yes');
-    document.getElementById('pin-screen').style.display='none';
-    checkEmployee();
-  } else {
-    document.getElementById('pin-error').textContent='Onjuiste pincode, probeer opnieuw';
-    pinEntry='';
-    updatePinDots();
-    // Schud animatie
-    const dots=document.getElementById('pin-dots');
-    dots.style.animation='shake .3s';
-    setTimeout(()=>dots.style.animation='',300);
-  }
+  // App-pin is afgeschaft sinds v2.7.9 — direct door naar medewerker-keuze.
+  // De eigenaar-pin (zie OWNER_PIN hierboven) blijft als drempel bij wisselen
+  // naar een eigenaar-rol; die wordt afgehandeld in requestOwnerPin().
 }
 
 // ====================== MEDEWERKER-KEUZE ======================
@@ -691,6 +626,7 @@ function requestOwnerPin(name, callback) {
 function confirmOwnerPin() {
   const v=document.getElementById('owner-pin-input').value;
   if(v===OWNER_PIN) {
+    document.getElementById('owner-pin-input').blur(); // iOS toetsenbord direct sluiten
     closeModal('modal-owner-pin');
     const cb=_ownerPinCallback;
     _ownerPinCallback=null;
@@ -702,6 +638,7 @@ function confirmOwnerPin() {
   }
 }
 function cancelOwnerPin() {
+  document.getElementById('owner-pin-input').blur(); // iOS toetsenbord direct sluiten
   _ownerPinCallback=null;
   closeModal('modal-owner-pin');
 }
