@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.9 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.10 (zie APP_VERSION constante in script)                ║
   ║  Laatst gewijzigd: 2026-06-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -362,8 +362,8 @@
   </div>
 </div>
 <!-- OWNER PIN -->
-<div class="modal-overlay" id="modal-owner-pin">
-  <div class="modal">
+<div class="modal-overlay" id="modal-owner-pin" style="align-items:flex-start;justify-content:center;padding:max(60px,env(safe-area-inset-top)) 16px 16px;box-sizing:border-box">
+  <div class="modal" style="border-radius:var(--radius);max-width:360px;width:100%;padding:20px">
     <div class="modal-title">Eigenaar-pin<span class="modal-close" onclick="cancelOwnerPin()">×</span></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px" id="owner-pin-target">Voer de eigenaar-pin in om te wisselen.</p>
     <div class="form-group"><input id="owner-pin-input" type="tel" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px;font-family:'JetBrains Mono',monospace;-webkit-text-security:disc;text-security:disc"></div>
@@ -510,18 +510,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.9';
+const APP_VERSION = '2.7.10';
 const BUILD_DATE = '2026-06-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — één pincode in plaats van twee:<br><br>
-  • <strong>App-pin (oud: 6422 bij open) is afgeschaft</strong>. Bij openen van de app zie je direct "Wie ben jij vandaag" — geen extra cijfertoetsenbord meer vooraf.<br>
-  • <strong>Bjorn en Jens werken nu zonder enige pin</strong> — tik je naam en je bent aan de slag.<br>
-  • <strong>Eigenaar-pin blijft 7102</strong> — alleen Gian en Max kennen die. Het was niet handig geweest om hem op 6422 te zetten, want dat is de pin die het team al kende.<br>
-  • Eigenaar-rol blijft beveiligd: zonder 7102 geen toegang tot Instellingen of eigenaar-functies.
+  <strong>Welkom bij v${APP_VERSION}</strong> — pin-veld zichtbaar maken:<br><br>
+  • <strong>Pin-invoer verdween onder het toetsenbord</strong>. Oorzaak: de pin-modal was een bottom-sheet (vanaf onderaan), en bij het opengaan van het cijfertoetsenbord werd 'ie volledig afgedekt. Nu staat de pin-modal bovenaan in beeld als floating dialog — toetsenbord eronder, invoerveld altijd zichtbaar.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
