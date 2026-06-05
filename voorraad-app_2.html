@@ -5,7 +5,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.6 (zie APP_VERSION constante in script)                 ║
+  ║  Versie: 2.7.7 (zie APP_VERSION constante in script)                 ║
   ║  Laatst gewijzigd: 2026-06-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
@@ -450,7 +450,7 @@
     <div class="form-group"><label>HOEVEELHEID</label>
       <div class="stepper">
         <button onclick="stepIssueQty(-0.125)">−</button>
-        <input id="issue-qty" type="number" value="1" min="0.125" step="0.125" style="width:70px;text-align:center">
+        <input id="issue-qty" type="number" inputmode="decimal" value="1" min="0.125" step="0.125" onfocus="this.select()" onclick="this.select()" style="width:100px;text-align:center;font-weight:600;font-size:16px">
         <button onclick="stepIssueQty(0.125)">+</button>
         <span id="issue-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
       </div>
@@ -538,15 +538,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.6';
+const APP_VERSION = '2.7.7';
 const BUILD_DATE = '2026-06-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — sortering kleurnummers nu écht overal:<br><br>
-  • <strong>In Voorraad tijdens zoeken</strong> stonden producten met dezelfde naam soms niet op kleur gesorteerd, terwijl het bij Materiaal Uitgeven wel goed ging. Sortering is nu expliciet bij elke render — voorraadlijst, materiaal uitgeven, prijsopvraag-tekst, tekst-export en CSV-export gebruiken dezelfde sorteer-regel (naam alfabetisch, daarbinnen kleurcode numeriek zodat RAL 9001 vóór RAL 9010 komt).
+  <strong>Welkom bij v${APP_VERSION}</strong> — sneller invoeren bij grote hoeveelheden:<br><br>
+  • <strong>Hoeveelheid-veld bij Materiaal Uitgeven / Retour is nu tikbaar</strong>. Tik op het getal in het midden → cijfertoetsenbord opent en het hele getal staat al geselecteerd, dus typ '50' en je hebt 50 liter. De +/- knoppen blijven bestaan voor fijne bijstelling per 0,125.<br>
+  • <strong>Komma én punt werken</strong> als decimaal — typ '12,5' of '12.5', allebei prima.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1851,7 +1852,8 @@ function clearIssueSearch() {
 
 function stepIssueQty(delta) {
   const el=document.getElementById('issue-qty');
-  const val=Math.round(((parseFloat(el.value)||0)+delta)*1000)/1000;
+  const current=parseFloat(String(el.value||'').replace(',','.'))||0;
+  const val=Math.round((current+delta)*1000)/1000;
   el.value=Math.max(0.125, val);
 }
 
@@ -1923,7 +1925,7 @@ function onIssueProjectChange() {
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
-  const qty=Math.round((parseFloat(document.getElementById('issue-qty').value)||0.125)*1000)/1000;
+  const qty=Math.round((parseFloat(String(document.getElementById('issue-qty').value||'').replace(',','.'))||0.125)*1000)/1000;
   if(qty<=0) { alert('Voer een geldige hoeveelheid in.'); return; }
   const projId=parseInt(document.getElementById('issue-project').value)||null;
   if(issueMode==='out' && !projId) { alert('Kies eerst een project. Materiaal kan alleen op een project worden uitgegeven.'); return; }
