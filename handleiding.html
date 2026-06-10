@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -41,6 +42,8 @@
   .pill-out{background:#fde8ea;color:var(--accent);}
   .pill-empty{background:#1a1a1a;color:#fff;}
   .pill-besteld{background:#e7f5ee;color:var(--green);}
+  .pill-bus{background:#e7f0fa;color:#2563b0;}
+  .pill-crown{background:#fff4e0;color:var(--amber);}
   .tip{background:var(--surface2);border-left:3px solid var(--accent);padding:12px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:14px;}
   .tip strong{font-weight:600;}
   .warn{background:#fff4e0;border-left:3px solid var(--amber);padding:12px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:14px;}
@@ -60,34 +63,55 @@
 <header>
   <div class="logo">🎨 ERNES SCHILDERS</div>
   <h1>Voorraad App – Gebruiksaanwijzing</h1>
-  <div class="ver">versie 2.3.4 · build 2026-05-14</div>
+  <div class="ver">versie 2.8.0 · build 2026-06-10</div>
 </header>
 
 <div class="toc">
   <strong>INHOUD</strong>
   <a href="#start">1. App openen &amp; inloggen</a>
   <a href="#tabs">2. De 4 tabbladen</a>
-  <a href="#uitgeven">3. Materiaal uitgeven aan project</a>
-  <a href="#retour">4. Materiaal retourneren</a>
-  <a href="#voorraad">5. Voorraad bijwerken (loods ronde)</a>
-  <a href="#barcode">6. Barcode scannen</a>
-  <a href="#kleuren">7. Kleurcodes &amp; statuslabels</a>
-  <a href="#bestellen">8. Bestellen via leveranciers</a>
-  <a href="#corrigeren">9. Boeking corrigeren of verwijderen</a>
-  <a href="#projecten">10. Projecten &amp; export</a>
-  <a href="#tips">11. Tips &amp; aandachtspunten</a>
+  <a href="#bussen">3. Werken met de bussen 🚐</a>
+  <a href="#uitgeven">4. Materiaal uitgeven aan project</a>
+  <a href="#retour">5. Materiaal retourneren</a>
+  <a href="#verplaatsen">6. Materiaal verplaatsen (magazijn ↔ bus)</a>
+  <a href="#voorraad">7. Voorraad bijwerken (loods ronde)</a>
+  <a href="#barcode">8. Barcode scannen</a>
+  <a href="#kleuren">9. Kleurcodes &amp; statuslabels</a>
+  <a href="#bestellen">10. Bestellen via leveranciers</a>
+  <a href="#corrigeren">11. Boeking corrigeren of verwijderen</a>
+  <a href="#projecten">12. Projecten &amp; export</a>
+  <a href="#tips">13. Tips &amp; aandachtspunten</a>
 </div>
 
 <h2 id="start">1. App openen &amp; inloggen</h2>
 <div class="card">
   <p><strong>Open in Safari op de iPhone:</strong></p>
   <p><span class="url">gianernes.github.io/voorraad-app/voorraad-app_2.html</span></p>
-  <p style="margin-top:14px"><strong>Pincode:</strong> <span class="pin">6422</span></p>
-  <p style="font-size:13px;color:var(--muted);margin-top:6px">Sessie blijft actief zolang Safari open is. Na afsluiten opnieuw de pincode invoeren.</p>
+  <p style="margin-top:14px">Er is <strong>geen algemene pincode</strong> meer. Je opent de app en kiest meteen <strong>wie je bent</strong>. Die naam komt automatisch bij elke boeking in de historie te staan.</p>
+  <p style="font-size:13px;color:var(--muted);margin-top:6px">Sessie blijft actief zolang Safari open is. Sluit je Safari, dan kies je bij het openen opnieuw je naam.</p>
 </div>
 
 <h3>Wie ben jij vandaag?</h3>
-<p>Na het invoeren van de pincode kies je wie er werkt: <strong>Gian</strong> of <strong>Maud</strong>. Die naam komt automatisch bij elke boeking in de historie te staan. Wisselen kan altijd via de knop <strong>👤 [naam]</strong> rechtsboven in de header.</p>
+<p>Bij het openen kies je je eigen naam uit de lijst. Wisselen kan altijd via de knop <strong>👤 [naam]</strong> rechtsboven in de header.</p>
+
+<h3>Eigenaar of medewerker?</h3>
+<p>De app kent twee rollen. Je ziet aan het <strong>👑</strong> naast de naam wie als eigenaar is ingelogd.</p>
+<div class="tab-grid">
+  <div class="tab-card">
+    <div class="tab-icon">👑</div>
+    <div class="tab-name">Eigenaar (Gian &amp; Max)</div>
+    <div class="tab-desc">Kiest zijn naam en bevestigt met de eigenaar-pin. Mag alles: voorraad corrigeren, ontvangen, producten &amp; leveranciers beheren, boekingen corrigeren en de instellingen.</div>
+  </div>
+  <div class="tab-card">
+    <div class="tab-icon">👷</div>
+    <div class="tab-name">Medewerker</div>
+    <div class="tab-desc">Kiest zijn naam, geen pin nodig. Mag uitgeven, retourneren en verplaatsen — het dagelijkse werk. Bestellijsten bekijken en versturen kan ook.</div>
+  </div>
+</div>
+<p style="margin-top:10px"><strong>Eigenaar-pin:</strong> <span class="pin">7102</span></p>
+<p style="font-size:13px;color:var(--muted);margin-top:6px">Alleen nodig als Gian of Max als eigenaar wil werken. Medewerkers hebben geen pin nodig.</p>
+
+<div class="tip"><strong>Waarom dit onderscheid?</strong> De mannen kunnen meteen aan de slag met uitgeven, retourneren en verplaatsen — geen gedoe met pincodes. De dingen die de telling kunnen verstoren (handmatig voorraad bijstellen, producten wijzigen, boekingen corrigeren) zitten achter de eigenaar-pin.</div>
 
 <h2 id="tabs">2. De 4 tabbladen</h2>
 <div class="tab-grid">
@@ -113,41 +137,78 @@
   </div>
 </div>
 
-<h2 id="uitgeven">3. Materiaal uitgeven aan project</h2>
+<h2 id="bussen">3. Werken met de bussen 🚐</h2>
+<p>De app houdt nu per bus bij wat erin ligt. Bovenaan het <strong>Voorraad</strong>-tabblad kies je de locatie: <strong>🏠 Magazijn</strong> of een van de bussen (<strong>Bus 01, Bus 25, Bus 27, Bus 968</strong>). Zo weet je altijd waar je verf staat — zonder extra gedoe.</p>
+
+<p>Er zijn <strong>twee soorten verf</strong>, en die behandel je net even anders. Meer hoef je niet te onthouden:</p>
+
+<h3>① Mengkleur voor één klus</h3>
+<p>Verf die speciaal voor dat ene project is aangemaakt.</p>
+<div class="step"><div class="step-num">1</div><div class="step-body"><strong>Pak je 'm?</strong> Boek 'm meteen op het project: <strong>+ → 🎨 Materiaal uitgeven → project → product</strong>. Locatie laat je op Magazijn staan.</div></div>
+<div class="step"><div class="step-num">2</div><div class="step-body"><strong>Houd je over?</strong> <strong>+ → ↩️ Materiaal retourneren</strong> — terug naar het magazijn.</div></div>
+<div class="tip"><strong>Dat 'ie tussendoor in de bus staat, boeken we niet</strong> — het is toch voor die ene klus. Zo doe je 2 handelingen in plaats van een hele rits.</div>
+
+<h3>② Vaste spullen die altijd meerijden</h3>
+<p>Je standaard busvoorraad: grondverf, kit, tape, standaardkleuren — alles wat altijd in de bus ligt.</p>
+<div class="step"><div class="step-num">1</div><div class="step-body"><strong>Op de bus zetten</strong> (eenmalig + later bijvullen): <strong>+ → 🔁 Materiaal verplaatsen → VAN Magazijn, NAAR jouw bus</strong>.</div></div>
+<div class="step"><div class="step-num">2</div><div class="step-body"><strong>Gebruik je wat bij de klant?</strong> <strong>+ → 🎨 Materiaal uitgeven → project → bij LOCATIE jouw bus → product</strong>. Boek gewoon wat er écht op ging.</div></div>
+
+<div class="tip"><strong>Waarom dit zo?</strong> Zo zie je altijd wat er nog in je bus ligt én wat een klus gekost heeft — zonder je rot te klikken.</div>
+
+<div class="warn"><strong>⚠️ Vuistregel:</strong> Mengkleur = gelijk op 't project. Vaste spullen = van de bus af als je 't gebruikt. Door elkaar halen geeft rommel in de telling.</div>
+
+<h2 id="uitgeven">4. Materiaal uitgeven aan project</h2>
 <div class="step"><div class="step-num">1</div><div class="step-body">Tik op de <strong>+ knop</strong> rechtsonder en kies <strong>🎨 Materiaal uitgeven</strong>.</div></div>
 <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Kies het project</strong> bovenaan. <strong>Verplicht</strong> — zonder project kun je niet uitgeven.</div></div>
-<div class="step"><div class="step-num">3</div><div class="step-body">Zoek het product via de zoekbalk <strong>óf</strong> tik op <strong>📷 Scan barcode</strong>.</div></div>
-<div class="step"><div class="step-num">4</div><div class="step-body">Tik op het product, pas de hoeveelheid aan (stappen van <strong>0,125</strong> voor literverpakkingen) en tik <strong>Uitgeven</strong>.</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-body">Bij <strong>LOCATIE</strong> kies je waar je 't uit pakt — <strong>Magazijn</strong> of jouw bus. Standaard staat 'ie op Magazijn.</div></div>
+<div class="step"><div class="step-num">4</div><div class="step-body">Zoek het product via de zoekbalk <strong>óf</strong> tik op <strong>📷 Scan barcode</strong>.</div></div>
+<div class="step"><div class="step-num">5</div><div class="step-body">Tik op het product, pas de hoeveelheid aan (stappen van <strong>0,125</strong> voor literverpakkingen) en tik <strong>Uitgeven</strong>.</div></div>
 
 <div class="tip"><strong>Waarom verplicht een project?</strong> Zo weten we altijd waar materiaal heen ging. Verbruik zonder project is een gat in de administratie — daar verschijnt anders een ⚠️ bij in het dashboard.</div>
 
-<h2 id="retour">4. Materiaal retourneren</h2>
+<h2 id="retour">5. Materiaal retourneren</h2>
 <div class="step"><div class="step-num">1</div><div class="step-body">Tik op de <strong>+ knop</strong> en kies <strong>↩️ Materiaal retourneren</strong>.</div></div>
 <div class="step"><div class="step-num">2</div><div class="step-body">Kies <strong>eerst het project</strong> — de productlijst toont daarna alleen wat er voor dát project uitgegeven is. Laat je het project leeg, dan komt het materiaal terug in de algemene voorraad.</div></div>
-<div class="step"><div class="step-num">3</div><div class="step-body">Selecteer product en hoeveelheid en bevestig.</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-body">Bij <strong>LOCATIE</strong> kies je waar het naartoe gaat — terug naar het <strong>Magazijn</strong> of naar een bus.</div></div>
+<div class="step"><div class="step-num">4</div><div class="step-body">Selecteer product en hoeveelheid en bevestig.</div></div>
 
-<h2 id="voorraad">5. Voorraad bijwerken (loods ronde)</h2>
+<h2 id="verplaatsen">6. Materiaal verplaatsen (magazijn ↔ bus)</h2>
+<p>Verplaatsen is voor je <strong>vaste busvoorraad</strong>: je laadt de bus, of je legt iets terug in het magazijn. De voorraad gaat niet weg — die staat alleen ergens anders. <strong>Iedereen mag dit</strong>, het kost je 10 seconden.</p>
+<div class="step"><div class="step-num">1</div><div class="step-body">Tik op de <strong>+ knop</strong> en kies <strong>🔁 Materiaal verplaatsen</strong>.</div></div>
+<div class="step"><div class="step-num">2</div><div class="step-body">Kies <strong>VAN</strong> (waar het nu ligt) en <strong>NAAR</strong> (waar het heen gaat). Bijvoorbeeld VAN Magazijn → NAAR Bus 25.</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-body">Zoek het product, vul het aantal in, tik <strong>Verplaatsen</strong>. Het venster blijft open — meteen door naar het volgende.</div></div>
+<div class="tip"><strong>💡 Bus laden voor de dag?</strong> Verplaats alles in één keer VAN Magazijn → NAAR jouw bus. Onderaan de voorraadlijst zie je dan onder je bus-chip precies wat je bij je hebt.</div>
+<div class="warn"><strong>Let op:</strong> verplaatsen gebruik je alléén voor vaste busvoorraad. Mengkleur voor één klus boek je gewoon meteen uit op het project (zie sectie 3).</div>
+
+<h2 id="voorraad">7. Voorraad bijwerken (loods ronde)</h2>
 <div class="step"><div class="step-num">1</div><div class="step-body">Ga naar tabblad <strong>Voorraad</strong>. Zoek of scan.</div></div>
 <div class="step"><div class="step-num">2</div><div class="step-body">Gebruik de <strong>− en + knoppen</strong> direct op de productkaart. Stappen van <strong>0,25</strong>. Wijzigingen worden direct opgeslagen.</div></div>
+<div class="warn"><strong>👑 Alleen eigenaren.</strong> De − en + knoppen zijn alleen zichtbaar voor Gian en Max. Zo voorkomen we dat de voorraad per ongeluk wordt bijgesteld. Medewerkers boeken via uitgeven / retour / verplaatsen.</div>
 <div class="tip"><strong>💡 Tip:</strong> Loop door de loods en pas elk product direct aan. Alle iPhones zien wijzigingen binnen 10 seconden.</div>
 
-<h2 id="barcode">6. Barcode scannen</h2>
+<h2 id="barcode">8. Barcode scannen</h2>
 <p>Overal waar je een product zoekt — bij uitgeven, retourneren of in het Voorraad-tabblad — kun je op <strong>📷 Scan barcode</strong> tikken. Houd de iPhone <strong>rechtop of op de kop</strong> boven de barcode. Het product wordt automatisch geopend.</p>
 <p>Heeft een barcode meerdere matches (bijvoorbeeld dezelfde verf in verschillende kleuren)? Dan verschijnt een keuzelijst.</p>
 
-<h2 id="kleuren">7. Kleurcodes &amp; statuslabels</h2>
+<h2 id="kleuren">9. Kleurcodes &amp; statuslabels</h2>
 
 <h3>Kleurcodes</h3>
 <p>Producten kunnen meerdere kleurcodes hebben — bijvoorbeeld <span class="colorcode">RAL 9010</span> <span class="colorcode">WN</span> <span class="colorcode">S 0500-N</span>. Die zijn rood gemarkeerd op de productkaart, in één oogopslag herkenbaar.</p>
 
 <h3>Statuslabels</h3>
-<p><span class="pill pill-ok">OK</span> Voorraad is voldoende (boven minimum)</p>
-<p><span class="pill pill-low">BIJNA OP</span> Zit tegen het minimum aan</p>
-<p><span class="pill pill-out">LAAG</span> Onder minimum — staat op de bestellijst</p>
-<p><span class="pill pill-empty">LEEG</span> Geen voorraad meer</p>
-<p style="margin-top:10px"><span class="pill pill-besteld">✓ BESTELD DD-MM</span> Al besteld — niet opnieuw bestellen tot de levering binnen is (vervalt automatisch na 10 werkdagen).</p>
+<p>Rechts op elke productkaart staat een label. Het rekent op de <strong>magazijnvoorraad</strong> ten opzichte van het ingestelde minimum:</p>
+<p><span class="pill pill-ok">OK</span> Ruim voldoende — minstens anderhalf keer het minimum</p>
+<p><span class="pill pill-low">Bijna op</span> Zit tegen het minimum aan</p>
+<p><span class="pill pill-out">Laag</span> Onder het minimum — staat op de bestellijst</p>
+<p><span class="pill pill-out">Leeg</span> Helemaal op — geen voorraad meer</p>
+<p style="margin-top:10px"><span class="pill pill-besteld">✓ besteld DD-MM</span> Al besteld — niet opnieuw bestellen tot de levering binnen is (vervalt automatisch na 10 werkdagen).</p>
 
-<h2 id="bestellen">8. Bestellen via leveranciers</h2>
+<h3>Busvoorraad</h3>
+<p>Kies je bovenaan een bus in plaats van het magazijn, dan toont elke kaart in het blauw hoeveel er in díe bus ligt:</p>
+<p><span class="pill pill-bus">🚐 4 ltr</span> Voorraad in de geselecteerde bus</p>
+<p style="font-size:13px;color:var(--muted)">De OK / Laag / Leeg-labels gelden altijd voor het magazijn — bestellen en minimum draaien op het magazijn, niet op de bus.</p>
+
+<h2 id="bestellen">10. Bestellen via leveranciers</h2>
 <p>Het tabblad <strong>Bestellen</strong> groepeert alle producten die onder minimum staan per leverancier. Per leverancier zie je drie knoppen:</p>
 <ul>
   <li><strong>📤 Exporteer</strong> — opent de bestellijst als tekst om te kopiëren of mailen.</li>
@@ -157,13 +218,16 @@
 <p>Boven aan de bestelpagina staat <strong>📤 Exporteer alles</strong> — alles van alle leveranciers in één blok.</p>
 
 <h3>Bestelling ontvangen</h3>
-<p>Bij ontvangst van een levering: tik op de <strong>+ knop</strong> → <strong>📦 Ontvangst boeken</strong>. Loop de producten af, vul de werkelijk ontvangen hoeveelheden in (decimalen toegestaan), en gebruik de <strong>Skip</strong>-knop voor producten die deze keer niet meegekomen zijn. Bij ontvangst wordt de <span class="pill pill-besteld">✓ BESTELD</span>-markering automatisch verwijderd.</p>
+<p>Bij ontvangst van een levering ga je naar het tabblad <strong>Bestellen</strong>. Per leverancier zit daar een knop <strong>📦 Ontvangen</strong>, en bovenaan <strong>📦 Alles ontvangen</strong>. Loop de producten af, vul de werkelijk ontvangen hoeveelheden in (decimalen toegestaan), en gebruik de <strong>Skip</strong>-knop voor producten die deze keer niet meegekomen zijn. Bij ontvangst wordt de <span class="pill pill-besteld">✓ besteld</span>-markering automatisch verwijderd.</p>
+<div class="warn"><strong>👑 Alleen eigenaren.</strong> Ontvangst boeken doen Gian en Max — net als de knop <strong>✓ Markeer besteld</strong>. Exporteren en via WhatsApp versturen kan iedereen.</div>
 
-<h2 id="corrigeren">9. Boeking corrigeren of verwijderen</h2>
+<h2 id="corrigeren">11. Boeking corrigeren of verwijderen</h2>
 <p>Heb je je vergist? Geen probleem. <strong>Tik op een regel in de historie</strong> — op het dashboard, in het project-detailscherm of in de historie van een product. Een venster opent met de mogelijkheid om de hoeveelheid aan te passen of de boeking helemaal te verwijderen.</p>
+<div class="warn"><strong>👑 Alleen eigenaren.</strong> Corrigeren en verwijderen kan alleen Gian of Max. Klopt er iets niet in je eigen boeking? Geef het even door, dan zetten zij het recht.</div>
 <div class="tip"><strong>De voorraad wordt automatisch teruggerold.</strong> Verwijder je een uitgifte van 5 liter, dan komen die 5 liter weer in de voorraad. Pas je een retour van 3 naar 2 aan, dan wordt 1 liter weer afgeboekt. Geen handmatig narekenen.</div>
+<div class="tip"><strong>🔁 Verplaatsingen</strong> kun je niet aanpassen, alleen verwijderen. Bij verwijderen draait de voorraad op beide locaties automatisch terug.</div>
 
-<h2 id="projecten">10. Projecten &amp; export</h2>
+<h2 id="projecten">12. Projecten &amp; export</h2>
 <p>Tabblad <strong>Projecten</strong> toont alle lopende projecten met totale materiaalkosten. Tik op een project voor het detailscherm.</p>
 
 <h3>Project exporteren</h3>
@@ -174,20 +238,20 @@
   <li><strong>Boekfouten</strong> — gecorrigeerde of verwijderde boekingen, voor de transparantie.</li>
 </ul>
 
-<h2 id="tips">11. Tips &amp; aandachtspunten</h2>
+<h2 id="tips">13. Tips &amp; aandachtspunten</h2>
 
-<div class="tip"><strong>🔄 Synchronisatie:</strong> Alle iPhones zijn binnen 10 seconden gesynchroniseerd. Wijzigingen die Maud doet zie jij vrijwel direct, en andersom.</div>
+<div class="tip"><strong>🔄 Synchronisatie:</strong> Alle iPhones zijn binnen 10 seconden gesynchroniseerd. Wat iemand anders boekt zie jij vrijwel direct, en andersom.</div>
 
 <div class="tip"><strong>📷 Barcode scannen:</strong> Werkt zowel rechtop als ondersteboven. Bij weinig licht: zet de iPhone-zaklamp aan vóór je scant.</div>
 
-<div class="tip"><strong>🔐 Pincode:</strong> Sessie blijft actief zolang Safari open is. Sluit je Safari, dan begin je opnieuw met pincode + naamkeuze.</div>
+<div class="tip"><strong>🔐 Inloggen:</strong> Sessie blijft actief zolang Safari open is. Sluit je Safari, dan kies je bij het openen opnieuw je naam. Werk je als eigenaar, dan vraagt de app weer even de eigenaar-pin.</div>
 
 <div class="warn"><strong>⚠️ Verdwaalde regels:</strong> Zie je in het dashboard een ⚠️ bij een uitgifte? Dan is er materiaal uitgegeven zónder project. Tik erop en koppel alsnog het juiste project — of corrigeer de boeking.</div>
 
 <div class="tip"><strong>💾 Back-up:</strong> In het Instellingen-scherm staat <strong>Exporteer back-up (JSON)</strong>. Maak dit zo nu en dan — minimaal vóór grote opschoonacties.</div>
 
 <footer>
-  Voorraad App v2.3.4 · Ernes Schilders · gianernes.github.io/voorraad-app
+  Voorraad App v2.8.0 · Ernes Schilders · gianernes.github.io/voorraad-app
 </footer>
 
 </div>
