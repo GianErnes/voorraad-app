@@ -108,9 +108,11 @@
   #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
   .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
-  .header{padding:52px 20px 14px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
-  .header h1{font-size:22px;font-weight:600;letter-spacing:-.5px;}
-  .header p{font-size:12px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;}
+  .header{padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+  .header-row2{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .header-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .header-meta #app-version-tag{opacity:.7;letter-spacing:.3px;}
+  #emp-badge{display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--surface);padding:5px 10px;border:1px solid var(--border);border-radius:16px;cursor:pointer;flex-shrink:0;}
   .tabs{position:fixed;bottom:0;left:0;right:0;height:var(--tab-h);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom);}
   .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;transition:color .2s;padding-top:6px;}
   .tab.active{color:var(--accent);}
@@ -213,11 +215,15 @@
 </div>
 
 <div class="header">
-  <h1 id="page-title">Dashboard</h1>
-  <p id="page-sub">Voorraadoverzicht <span class="sync-dot" id="sync-dot" title="Synchronisatiestatus"></span></p>
-  <div id="app-version-tag" style="font-size:10px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;letter-spacing:.3px"></div>
-  <div id="emp-badge" onclick="openEmployeePicker(false)" style="position:absolute;top:16px;right:16px;display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--card);padding:6px 10px;border:1px solid var(--border);border-radius:16px;cursor:pointer;">
-    <span>👤</span><span id="emp-badge-name">—</span><span style="font-size:9px;opacity:.6">▼</span>
+  <div class="header-row2">
+    <div class="header-meta">
+      <span id="page-sub">Voorraadoverzicht</span>
+      <span class="sync-dot" id="sync-dot" title="Synchronisatiestatus"></span>
+      <span id="app-version-tag"></span>
+    </div>
+    <div id="emp-badge" onclick="openEmployeePicker(false)">
+      <span>👤</span><span id="emp-badge-name">—</span><span style="font-size:9px;opacity:.6">▼</span>
+    </div>
   </div>
 </div>
 
@@ -949,8 +955,7 @@ function setPage(p) {
   if(idx>=0) document.querySelectorAll('.tab')[idx].classList.add('active');
   const titles={dashboard:'Dashboard',stock:'Voorraad',projects:'Projecten',orders:'Bestellijst',settings:'Instellingen'};
   const subs={dashboard:'Voorraadoverzicht',stock:'Alle materialen',projects:'Lopende & voltooide projecten',orders:'Weekbestelling per leverancier',settings:'Categorieën & data'};
-  document.getElementById('page-title').textContent=titles[p]||p;
-  document.getElementById('page-sub').innerHTML=(subs[p]||'')+' <span class="sync-dot" id="sync-dot"></span>';
+  document.getElementById('page-sub').textContent=subs[p]||'';
   renderPage(p);
 }
 function renderPage(p) {
