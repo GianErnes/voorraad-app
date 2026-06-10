@@ -154,9 +154,9 @@
   .fab:active{transform:scale(.92);}
   .section-hdr{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px;}
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
-  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
-  .stat-val{font-size:26px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--accent);}
-  .stat-lbl{font-size:11px;color:var(--muted);margin-top:4px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;}
+  .stat-val{font-size:22px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--accent);line-height:1.1;}
+  .stat-lbl{font-size:11px;color:var(--muted);margin-top:2px;}
   .proj-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
   .proj-item:last-child{border-bottom:none;}
   .proj-item:active{background:var(--surface2);}
@@ -965,11 +965,11 @@ function renderPage(p) {
 // ====================== DASHBOARD ======================
 function renderDashboard() {
   const low=db.products.filter(p=>p.qty<p.min);
-  const totalVal=db.products.reduce((s,p)=>s+totalQty(p)*p.price,0);
+  const totalVal=db.products.filter(p=>Number(p.min)>0).reduce((s,p)=>s+totalQty(p)*p.price,0);
   document.getElementById('stat-grid').innerHTML=`
     <div class="stat-card"><div class="stat-val">${db.products.length}</div><div class="stat-lbl">Producten</div></div>
     <div class="stat-card"><div class="stat-val" style="color:${low.length?'var(--red)':'var(--green)'}">${low.length}</div><div class="stat-lbl">Laag op voorraad</div></div>
-    <div class="stat-card"><div class="stat-val" style="font-size:20px">€${totalVal.toFixed(0)}</div><div class="stat-lbl">Voorraadwaarde</div></div>
+    <div class="stat-card"><div class="stat-val" style="font-size:20px">€${totalVal.toFixed(0)}</div><div class="stat-lbl">Voorraadwaarde actief</div></div>
     <div class="stat-card"><div class="stat-val">${db.projects.filter(p=>p.status==='actief').length}</div><div class="stat-lbl">Actieve projecten</div></div>`;
   document.getElementById('low-stock-list').innerHTML=low.length===0?'<div class="empty">✅ Alles op peil</div>':
     low.map(p=>`<div class="card" onclick="openProductDetail(${p.id})">
