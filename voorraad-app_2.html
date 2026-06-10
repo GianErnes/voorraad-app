@@ -1,12 +1,13 @@
 
 
+
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.7.10 (zie APP_VERSION constante in script)                ║
-  ║  Laatst gewijzigd: 2026-06-04                                        ║
+  ║  Versie: 2.8.0 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-06-10                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -30,6 +31,16 @@
   ║    └─ dropdown in issue-modal als product 2+ kleuren heeft           ║
   ║    └─ ook bewerkbaar in Boeking corrigeren                           ║
   ║    └─ wordt prominent getoond in project-detail materiaalverbruik    ║
+  ║  • Bussen als voorraadlocaties (v2.8.0)                              ║
+  ║    └─ products.qty = MAGAZIJN · bus_stock tabel = busvoorraad        ║
+  ║    └─ buses tabel: Bus 01/25/27/968, beheer via instellingen         ║
+  ║    └─ locatie-chips in voorraadlijst (magazijn/bus weergave)         ║
+  ║    └─ Verplaatsen-flow (transfer) — vrij voor ALLE medewerkers       ║
+  ║    └─ locatiekeuze bij uitgeven/retour (location_id op history)      ║
+  ║    └─ history type 'transfer': location_id (van) → location_to_id   ║
+  ║    └─ NULL location_id = magazijn (backwards compatible)             ║
+  ║    └─ besteladvies/min/target blijven op MAGAZIJN rekenen            ║
+  ║    └─ waardering/dashboard-waarde = totaal (magazijn + bussen)       ║
   ║  • is_owner op employees — rolverdeling                              ║
   ║    └─ owners: voorraadmutaties, settings, history-edit, ontvangen    ║
   ║    └─ staff: alleen materiaal uitgeven/retourneren via project       ║
@@ -159,7 +170,7 @@
   .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
   .hist-item:active{background:var(--surface2);}
   .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
-  .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}
+  .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}.hist-dot.transfer{background:#3b82f6;}
   .hist-text{font-size:13px;}
   .hist-date{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
   hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
@@ -230,7 +241,8 @@
       </div>
       <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
-    <div class="chip-row" id="cat-filters"></div>
+    <div class="chip-row" id="loc-filters"></div>
+    <div class="chip-row" id="cat-filters" style="margin-top:6px"></div>
     <div class="chip-row" id="sup-filters" style="margin-top:6px"></div>
     <div class="chip-row" id="min-filters" style="margin-top:6px"></div>
     <div id="stock-summary-bar" style="display:none;margin:10px 0"></div>
@@ -276,6 +288,15 @@
       <div style="display:flex;gap:8px;margin-top:14px">
         <input id="new-emp-settings-input" placeholder="Nieuwe medewerker…" style="flex:1">
         <button class="btn btn-primary" onclick="addEmployeeFromSettings()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
+      </div>
+    </div>
+    <div class="section-hdr">Bussen beheren</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Elke bus is een eigen voorraadlocatie. Inactieve bussen verdwijnen uit de keuzelijsten, maar de geschiedenis blijft bewaard.</p>
+      <div id="bus-settings-list"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <input id="new-bus-input" placeholder="Nieuwe bus…" style="flex:1">
+        <button class="btn btn-primary" onclick="addBus()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
     </div>
     <div class="section-hdr">App-info</div>
@@ -388,6 +409,7 @@
     <div class="form-group"><label>PRODUCT</label><select id="hist-edit-product" onchange="onHistEditProductChange()"></select></div>
     <div class="form-group" id="hist-edit-color-group" style="display:none"><label>KLEUR</label><select id="hist-edit-color"></select></div>
     <div class="form-group"><label>PROJECT</label><select id="hist-edit-project"><option value="">— Geen project —</option></select></div>
+    <div class="form-group"><label>LOCATIE</label><select id="hist-edit-location"></select></div>
     <div class="form-group"><label>AANTAL</label><input id="hist-edit-qty" type="number" step="0.125" min="0"></div>
     <div class="form-group"><label>DATUM</label><input id="hist-edit-date" type="date"></div>
     <div class="form-group"><label>NOTITIE</label><input id="hist-edit-note" placeholder="Optioneel"></div>
@@ -404,6 +426,9 @@
     <div class="modal-title"><span id="issue-title-text">Materiaal uitgeven</span><span class="modal-close" onclick="closeModal('modal-issue')">×</span></div>
     <div class="form-group"><label>PROJECT</label>
       <select id="issue-project" onchange="onIssueProjectChange()"></select>
+    </div>
+    <div class="form-group"><label id="issue-location-label">UIT LOCATIE</label>
+      <select id="issue-location" onchange="onIssueLocationChange()"></select>
     </div>
     <div class="form-group" id="issue-product-group">
       <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
@@ -429,6 +454,40 @@
     </div>
     <div class="form-group"><label>NOTITIE (optioneel)</label><input id="issue-note" placeholder=""></div>
     <button class="btn btn-primary btn-full" id="issue-confirm-btn" onclick="confirmIssue()">Bevestigen</button>
+  </div>
+</div>
+<!-- TRANSFER (VERPLAATSEN) -->
+<div class="modal-overlay" id="modal-transfer">
+  <div class="modal">
+    <div class="modal-title">Materiaal verplaatsen<span class="modal-close" onclick="closeModal('modal-transfer')">×</span></div>
+    <div style="display:flex;gap:8px">
+      <div class="form-group" style="flex:1"><label>VAN</label>
+        <select id="transfer-from" onchange="onTransferLocChange()"></select>
+      </div>
+      <div class="form-group" style="flex:1"><label>NAAR</label>
+        <select id="transfer-to"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>PRODUCT</label>
+      <div style="position:relative;margin-bottom:8px">
+        <input id="transfer-search" placeholder="🔍 Zoek product…" oninput="filterTransferProducts()" style="padding-right:32px">
+        <button onclick="clearTransferSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">×</button>
+      </div>
+      <div id="transfer-product-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
+      <input type="hidden" id="transfer-product">
+      <div id="transfer-selected" style="font-size:13px;color:var(--accent);margin-top:6px;min-height:18px"></div>
+    </div>
+    <div class="form-group"><label>HOEVEELHEID</label>
+      <div class="stepper">
+        <button onclick="stepTransferQty(-0.125)">−</button>
+        <input id="transfer-qty" type="number" inputmode="decimal" value="1" min="0.125" step="0.125" onfocus="this.select();setTimeout(()=>this.scrollIntoView({block:'center',behavior:'smooth'}),350)" style="width:100px;text-align:center;font-weight:600;font-size:16px">
+        <button onclick="stepTransferQty(0.125)">+</button>
+        <span id="transfer-qty-unit" style="font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
+      </div>
+    </div>
+    <div class="form-group"><label>NOTITIE (optioneel)</label><input id="transfer-note" placeholder=""></div>
+    <button class="btn btn-primary btn-full" id="transfer-confirm-btn" onclick="confirmTransfer()">Verplaatsen</button>
   </div>
 </div>
 <!-- RECEIVE SINGLE SUPPLIER -->
@@ -504,21 +563,25 @@
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openProjectAdd()">🏗️ Nieuw project</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('out')">🎨 Materiaal uitgeven</button>
     <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openIssueModal('in')">↩️ Materiaal retourneren</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal('modal-fab');openTransferModal()">🔁 Materiaal verplaatsen</button>
     <button id="fab-supplier" class="btn btn-secondary btn-full" onclick="closeModal('modal-fab');openSupplierAdd()">🏢 Leverancier toevoegen</button>
   </div>
 </div>
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.7.10';
-const BUILD_DATE = '2026-06-04';
+const APP_VERSION = '2.8.0';
+const BUILD_DATE = '2026-06-10';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — pin-veld zichtbaar maken:<br><br>
-  • <strong>Pin-invoer verdween onder het toetsenbord</strong>. Oorzaak: de pin-modal was een bottom-sheet (vanaf onderaan), en bij het opengaan van het cijfertoetsenbord werd 'ie volledig afgedekt. Nu staat de pin-modal bovenaan in beeld als floating dialog — toetsenbord eronder, invoerveld altijd zichtbaar.
+  <strong>Welkom bij v${APP_VERSION}</strong> — de bussen zijn nu echte voorraadlocaties:<br><br>
+  • <strong>🚐 Busvoorraad apart</strong>. Bovenaan de voorraadlijst kies je nu Magazijn of een bus (01, 25, 27, 968). Per bus zie je precies wat erin ligt.<br><br>
+  • <strong>🔁 Materiaal verplaatsen</strong>. Nieuwe knop onder de +. Laad je 's ochtends de bus? Boek de verplaatsing magazijn → bus. Iedereen mag dit — het duurt 10 seconden en de voorraad blijft kloppen.<br><br>
+  • <strong>🎨 Uitgeven vanuit de bus</strong>. Bij uitgeven/retourneren kies je voortaan de locatie. Werk je vanuit de bus, kies dan de bus — dan klopt de busvoorraad ook na het boeken.<br><br>
+  • Bestellen en minimum-voorraad blijven op het <strong>magazijn</strong> rekenen. De voorraadwaarde op het dashboard telt magazijn én bussen op.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -710,7 +773,7 @@ async function dbDelete(table, match) {
 }
 
 // ====================== LOCAL STATE ======================
-let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[] };
+let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[], buses:[], busStock:[] };
 
 function setSyncing(state) {
   const dot = document.getElementById('sync-dot');
@@ -721,13 +784,15 @@ function setSyncing(state) {
 async function loadAll() {
   setSyncing('syncing');
   try {
-    const [cats, sups, prods, projs, hist, emps] = await Promise.all([
+    const [cats, sups, prods, projs, hist, emps, buses, busStock] = await Promise.all([
       dbGet('categories', 'order=name.asc'),
       dbGet('suppliers',  'order=name.asc'),
       dbGetAll('products', 'order=name.asc'),
       dbGet('projects',   'order=date.desc'),
       dbGetAll('history',  'order=created_at.desc'),
       dbGet('employees',  'order=name.asc'),
+      dbGet('buses',      'order=sort_order.asc'),
+      dbGetAll('bus_stock', 'order=id.asc'),
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
@@ -742,8 +807,10 @@ async function loadAll() {
       return ca.localeCompare(cb,'nl',{numeric:true,sensitivity:'base'});
     });
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
-    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||''}));
+    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||'',locationId:r.location_id||null,locationToId:r.location_to_id||null}));
     db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false,isOwner:r.is_owner===true}));
+    db.buses      = buses.map(r=>({id:r.id,name:r.name,sort:Number(r.sort_order)||0,active:r.active!==false}));
+    db.busStock   = busStock.map(r=>({id:r.id,busId:r.bus_id,productId:r.product_id,qty:Number(r.qty)||0}));
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
@@ -773,6 +840,50 @@ function getWeek(d) { const j=new Date(d.getFullYear(),0,1); return Math.ceil(((
 // Floating-point cleanup voor weergave: 60.879999999999995 → 60.88
 function roundQty(n) { return Math.round((Number(n)||0)*100)/100; }
 function supplierName(id) { const s=db.suppliers.find(s=>s.id===id); return s?s.name:'—'; }
+// ---------- Locatie-helpers (v2.8.0) ----------
+// Conventie: locationId null/undefined/'' = MAGAZIJN, anders bus-id.
+function activeBuses() { return (db.buses||[]).filter(b=>b.active); }
+function locName(id) { if(!id) return 'Magazijn'; const b=(db.buses||[]).find(b=>b.id===id); return b?b.name:'Bus?'; }
+function getBusQty(productId, busId) {
+  const row=(db.busStock||[]).find(r=>r.productId===productId&&r.busId===busId);
+  return row?row.qty:0;
+}
+function busTotalQty(productId) {
+  return (db.busStock||[]).filter(r=>r.productId===productId).reduce((s,r)=>s+r.qty,0);
+}
+function totalQty(p) { return Math.round((p.qty+busTotalQty(p.id))*1000)/1000; }
+function getLocQty(productId, locationId) {
+  if(!locationId) { const p=db.products.find(x=>x.id===productId); return p?p.qty:0; }
+  return getBusQty(productId, locationId);
+}
+// Options-HTML voor een locatie-select. value '' = Magazijn.
+function locationOptions(selectedId, onlyActive=true) {
+  const buses=onlyActive?activeBuses():(db.buses||[]);
+  return `<option value=""${!selectedId?' selected':''}>🏠 Magazijn</option>`+
+    buses.map(b=>`<option value="${b.id}"${selectedId===b.id?' selected':''}>🚐 ${b.name}${b.active?'':' (inactief)'}</option>`).join('');
+}
+// Centrale voorraad-mutator: schrijft delta naar magazijn (products.qty) of bus (bus_stock).
+// Leest altijd de VERSE waarde uit de DB zodat opeenvolgende mutaties op hetzelfde
+// product/dezelfde locatie (zoals bij history-correcties) correct stapelen.
+async function applyStockDelta(productId, locationId, delta) {
+  if(!locationId) {
+    const fresh=await dbGet('products', `id=eq.${productId}&select=qty`);
+    if(!fresh||!fresh.length) return;
+    const cur=Number(fresh[0].qty)||0;
+    const updated=Math.max(0, Math.round((cur+delta)*1000)/1000);
+    await dbPatch('products', `id=eq.${productId}`, {qty:updated});
+  } else {
+    const fresh=await dbGet('bus_stock', `product_id=eq.${productId}&bus_id=eq.${locationId}&select=id,qty`);
+    if(fresh&&fresh.length) {
+      const cur=Number(fresh[0].qty)||0;
+      const updated=Math.max(0, Math.round((cur+delta)*1000)/1000);
+      await dbPatch('bus_stock', `id=eq.${fresh[0].id}`, {qty:updated});
+    } else {
+      const qty=Math.max(0, Math.round(delta*1000)/1000);
+      await dbPost('bus_stock', {product_id:productId, bus_id:locationId, qty});
+    }
+  }
+}
 function orderQty(p) {
   const target=Number(p.target)||Number(p.min)||0;
   const pack=Number(p.pack)||1;
@@ -849,7 +960,7 @@ function renderPage(p) {
 // ====================== DASHBOARD ======================
 function renderDashboard() {
   const low=db.products.filter(p=>p.qty<p.min);
-  const totalVal=db.products.reduce((s,p)=>s+p.qty*p.price,0);
+  const totalVal=db.products.reduce((s,p)=>s+totalQty(p)*p.price,0);
   document.getElementById('stat-grid').innerHTML=`
     <div class="stat-card"><div class="stat-val">${db.products.length}</div><div class="stat-lbl">Producten</div></div>
     <div class="stat-card"><div class="stat-val" style="color:${low.length?'var(--red)':'var(--green)'}">${low.length}</div><div class="stat-lbl">Laag op voorraad</div></div>
@@ -867,11 +978,14 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Besteld';
-      const projText=proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':'');
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':'Besteld';
+      const projText=h.type==='transfer'
+        ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
+        : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
       const allCodes=(prod&&Array.isArray(prod.color_codes))?prod.color_codes:[];
       const codes=allCodes.length?` <span style="display:inline-flex;flex-wrap:wrap;gap:3px;margin-left:4px;vertical-align:middle">${allCodes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</span>`:'';
-      const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
+      const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
+      const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
         <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${codes}${projText}</div>
         <div class="hist-date">${meta}</div></div></div>`;
@@ -891,25 +1005,53 @@ function resetRecentLimit() { dashboardRecentLimit = 8; renderDashboard(); windo
 // ====================== STOCK ======================
 let activeCat='Alles';
 let activeSupplier='all';  // 'all' | supplierId | 'none' (zonder leverancier)
+let activeLocation=null;   // null = magazijn, anders bus-id (v2.8.0)
 function renderStock() {
-  const activeCount=db.products.filter(p=>Number(p.min)>0).length;
-  const allCount=db.products.length;
-  const noPriceCount=db.products.filter(p=>!Number(p.price)).length;
+  // Locatie-chips: magazijn + actieve bussen (telling = producten met voorraad in die bus)
+  const locEl=document.getElementById('loc-filters');
+  if(locEl) {
+    locEl.innerHTML=
+      `<div class="chip${!activeLocation?' active':''}" onclick="filterLoc(null)">🏠 Magazijn</div>`+
+      activeBuses().map(b=>{
+        const count=(db.busStock||[]).filter(r=>r.busId===b.id&&r.qty>0).length;
+        return `<div class="chip${activeLocation===b.id?' active':''}" onclick="filterLoc(${b.id})">🚐 ${b.name} (${count})</div>`;
+      }).join('');
+  }
+  // Reset als de gekozen bus inmiddels inactief/verwijderd is
+  if(activeLocation && !activeBuses().some(b=>b.id===activeLocation)) activeLocation=null;
+  const busMode=!!activeLocation;
+
+  // Basisset: magazijn = alle producten · bus = alleen producten met voorraad in die bus
+  let baseSet;
+  if(busMode) {
+    const ids=new Set((db.busStock||[]).filter(r=>r.busId===activeLocation&&r.qty>0).map(r=>r.productId));
+    baseSet=db.products.filter(p=>ids.has(p.id));
+  } else {
+    baseSet=db.products;
+  }
+
+  const activeCount=baseSet.filter(p=>Number(p.min)>0).length;
+  const allCount=baseSet.length;
+  const noPriceCount=baseSet.filter(p=>!Number(p.price)).length;
+  // Virtuele filters 🎯/💶 zijn magazijn-beheer — in busweergave alleen Alles + categorieën
   const cats=[
     {key:'Alles',label:`Alles (${allCount})`},
-    {key:'🎯 Actief',label:`🎯 Actief (${activeCount})`},
-    {key:'💶 € 0,00',label:`💶 € 0,00 (${noPriceCount})`},
-    ...db.categories.map(c=>({key:c,label:`${c} (${db.products.filter(p=>p.cat===c).length})`}))
+    ...(busMode?[]:[
+      {key:'🎯 Actief',label:`🎯 Actief (${activeCount})`},
+      {key:'💶 € 0,00',label:`💶 € 0,00 (${noPriceCount})`}
+    ]),
+    ...db.categories.map(c=>({key:c,label:`${c} (${baseSet.filter(p=>p.cat===c).length})`}))
   ];
+  if(busMode && (activeCat==='🎯 Actief'||activeCat==='💶 € 0,00')) activeCat='Alles';
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c.key===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.key.replace(/"/g,'&quot;')}">${c.label}</div>`).join('');
   const minEl=document.getElementById('min-filters'); if(minEl) minEl.innerHTML='';
 
   // Eerste filterstap: categorie / virtuele categorie
   let prods;
-  if(activeCat==='Alles') prods=db.products;
-  else if(activeCat==='🎯 Actief') prods=db.products.filter(p=>Number(p.min)>0);
-  else if(activeCat==='💶 € 0,00') prods=db.products.filter(p=>!Number(p.price));
-  else prods=db.products.filter(p=>p.cat===activeCat);
+  if(activeCat==='Alles') prods=baseSet;
+  else if(activeCat==='🎯 Actief') prods=baseSet.filter(p=>Number(p.min)>0);
+  else if(activeCat==='💶 € 0,00') prods=baseSet.filter(p=>!Number(p.price));
+  else prods=baseSet.filter(p=>p.cat===activeCat);
 
   // Leveranciers-chips: alleen leveranciers met producten binnen de huidige categorie-selectie
   const supCounts={};
@@ -945,19 +1087,23 @@ function renderStock() {
   // Summary-bar: aantal producten + totale waarde van huidige selectie
   const sumBar=document.getElementById('stock-summary-bar');
   if(prods.length){
-    const totalValue=prods.reduce((s,p)=>s+(Number(p.qty)||0)*(Number(p.price)||0),0);
+    const totalValue=prods.reduce((s,p)=>s+(busMode?getBusQty(p.id,activeLocation):(Number(p.qty)||0))*(Number(p.price)||0),0);
     const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
     const warning=zonderPrijs?` <span style="color:var(--accent)">⚠ ${zonderPrijs} zonder prijs</span>`:'';
     sumBar.style.display='';
-    sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Tekst</button><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuationCSV()">📊 Werkblad</button></div>`:''}</div></div>`;
+    if(busMode){
+      sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="font-size:13px"><strong>${prods.length}</strong> producten in ${locName(activeLocation)} · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div></div>`;
+    } else {
+      sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Tekst</button><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuationCSV()">📊 Werkblad</button></div>`:''}</div></div>`;
+    }
   } else {
     sumBar.style.display='none';
     sumBar.innerHTML='';
   }
 
-  // Prijsopvraag-knop: als €0,00 + een specifieke leverancier (niet 'all', niet 'none')
+  // Prijsopvraag-knop: alleen in magazijn-weergave bij €0,00 + specifieke leverancier
   const actionBar=document.getElementById('stock-action-bar');
-  if(activeCat==='💶 € 0,00' && activeSupplier!=='all' && activeSupplier!=='none' && prods.length){
+  if(!busMode && activeCat==='💶 € 0,00' && activeSupplier!=='all' && activeSupplier!=='none' && prods.length){
     const sup=db.suppliers.find(s=>s.id===parseInt(activeSupplier));
     actionBar.style.display='';
     actionBar.innerHTML=`<button class="btn btn-primary btn-full" onclick="askPricesFromSupplier(${sup.id})">📤 Vraag prijzen op bij ${sup.name} (${prods.length} producten)</button>`;
@@ -968,16 +1114,33 @@ function renderStock() {
 
   document.getElementById('stock-list').innerHTML=prods.length===0?'<div class="empty">Geen producten gevonden</div>':
     prods.map(p=>{
+      const isOwner=isCurrentUserOwner();
+      if(busMode){
+        // Busweergave: min/target gelden voor het magazijn — toon enkel busvoorraad
+        const bq=getBusQty(p.id, activeLocation);
+        return `<div class="card">
+          <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
+            <span class="card-title">${p.name}</span>
+            <span class="badge badge-blue">🚐 ${bq} ${p.unit}</span>
+          </div>
+          ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+          <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${bq} ${p.unit} in ${locName(activeLocation)} · magazijn: ${p.qty} · €${p.price}</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
+            <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${bq}</div>
+            ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
+          </div>
+        </div>`;
+      }
       const [bc,bl]=stockStatus(p);
       const pct=Math.min(100,(p.qty/Math.max(p.min,1))*100);
-      const isOwner=isCurrentUserOwner();
       return `<div class="card">
         <div class="card-row" onclick="openProductDetail(${p.id})" style="cursor:pointer">
           <span class="card-title">${p.name}</span>
           <span class="badge ${bc}">${bl}</span>
         </div>
         ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
-        <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad · min ${p.min} · €${p.price}</div>
+        <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad${busTotalQty(p.id)?` · 🚐 ${roundQty(busTotalQty(p.id))} in bussen`:''} · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
           <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
@@ -989,6 +1152,7 @@ function renderStock() {
 }
 function filterCat(el) { activeCat=el.dataset.cat; activeSupplier='all'; renderStock(); }
 function filterSup(el) { activeSupplier=el.dataset.sup; renderStock(); }
+function filterLoc(busId) { activeLocation=busId||null; activeSupplier='all'; renderStock(); }
 
 function askPricesFromSupplier(supplierId) {
   const sup=db.suppliers.find(s=>s.id===supplierId); if(!sup) return;
@@ -1038,14 +1202,14 @@ function exportStockValuation() {
   const filterTxt=filterLabels.length?filterLabels.join(' · '):'Alle producten';
 
   let txt=`VOORRAADWAARDERING – Ernes Schilders\n`;
-  txt+=`Datum: ${today()}\nFilter: ${filterTxt}\n`;
+  txt+=`Datum: ${today()}\nFilter: ${filterTxt}\nAantallen: magazijn + busvoorraad (totaal)\n`;
   txt+='─'.repeat(60)+'\n\n';
 
   let totalValue=0;
   let totalCount=0;
   let zonderPrijs=0;
   prods.forEach(p=>{
-    const qty=Number(p.qty)||0;
+    const qty=totalQty(p);
     const price=Number(p.price)||0;
     const value=qty*price;
     totalValue+=value;
@@ -1087,10 +1251,10 @@ async function exportStockValuationCSV() {
     return /[",\n;]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
   };
 
-  const rows=[['Product','Kleur','Categorie','Leverancier','Voorraad','Eenheid','Prijs','Waarde']];
+  const rows=[['Product','Kleur','Categorie','Leverancier','Voorraad (incl. bussen)','Eenheid','Prijs','Waarde']];
   let totalValue=0;
   prods.forEach(p=>{
-    const qty=Number(p.qty)||0;
+    const qty=totalQty(p);
     const price=Number(p.price)||0;
     const value=qty*price;
     totalValue+=value;
@@ -1140,6 +1304,18 @@ function clearSearch() {
 
 async function quickQty(id, delta) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
+  if(activeLocation) {
+    // Busweergave: corrigeer de busvoorraad (owner-only knoppen, zoals magazijn)
+    const loc=activeLocation;
+    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===loc);
+    const cur=row?row.qty:0;
+    const newQty=Math.max(0, Math.round((cur+delta)*100)/100);
+    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:loc,productId:id,qty:newQty});
+    renderStock();
+    await applyStockDelta(id, loc, delta);
+    await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today(), employee_name:getCurrentEmployee()||null, location_id:loc});
+    return;
+  }
   const newQty=Math.max(0, Math.round((p.qty+delta)*100)/100);
   p.qty=newQty;
   renderStock();
@@ -1618,13 +1794,17 @@ function openIssueModal(mode) {
     `<option value="">— Geen project —</option>`+
     projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 
-  issueProducts = mode==='out' ? db.products : [];
+  // Locatie: default magazijn. Bij 'out' = waar het vandaan komt, bij 'in' = waar het naartoe gaat.
+  document.getElementById('issue-location').innerHTML=locationOptions(null, true);
+  document.getElementById('issue-location-label').textContent=mode==='out'?'UIT LOCATIE':'RETOUR NAAR LOCATIE';
+
+  issueProducts = [];
   document.getElementById('issue-search').value='';
   document.getElementById('issue-product').value='';
   document.getElementById('issue-selected').textContent='';
   document.getElementById('issue-color-group').style.display='none';
   document.getElementById('issue-color').innerHTML='';
-  renderIssueProductList(issueProducts);
+  refreshIssueProducts();
 
   document.getElementById('issue-qty').value=1;
   document.getElementById('issue-note').value='';
@@ -1637,12 +1817,46 @@ function renderIssueProductList(prods) {
     list.innerHTML='<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">Geen producten gevonden</div>';
     return;
   }
-  list.innerHTML=prods.map(p=>`
+  const loc=getIssueLocation();
+  list.innerHTML=prods.map(p=>{
+    const q=loc?getBusQty(p.id,loc):p.qty;
+    const stockTxt=loc?`in ${locName(loc)}: ${q} ${p.unit}`:`op voorraad: ${q} ${p.unit}`;
+    const stockColor=loc?(q>0?'var(--green)':'var(--red)'):(p.qty<=p.min?'var(--red)':'var(--green)');
+    return `
     <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
       <div style="font-weight:500">${p.name}</div>
       ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
-      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${p.cat} · <span style="color:${p.qty<=p.min?'var(--red)':'var(--green)'}">op voorraad: ${p.qty} ${p.unit}</span></div>
-    </div>`).join('');
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${p.cat} · <span style="color:${stockColor}">${stockTxt}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// Locatie-helpers voor de issue-flow (v2.8.0)
+function getIssueLocation() {
+  const el=document.getElementById('issue-location');
+  const v=el?el.value:'';
+  return v?parseInt(v):null;
+}
+function refreshIssueProducts() {
+  if(issueMode==='out') {
+    const loc=getIssueLocation();
+    // Magazijn: alle producten · bus: alleen wat er in die bus ligt
+    issueProducts = loc ? db.products.filter(p=>getBusQty(p.id,loc)>0) : db.products;
+  }
+  // Bij retour ('in') bepaalt het project de lijst — zie onIssueProjectChange()
+  const q=document.getElementById('issue-search').value||'';
+  const filtered=(q.trim()?issueProducts.filter(p=>productMatchesSearch(p,q)):issueProducts.slice());
+  sortProductsByNameColor(filtered);
+  renderIssueProductList(filtered);
+}
+function onIssueLocationChange() {
+  // Locatie gewisseld → selectie resetten en productlijst verversen
+  document.getElementById('issue-product').value='';
+  document.getElementById('issue-selected').textContent='';
+  document.getElementById('issue-color-group').style.display='none';
+  document.getElementById('issue-color').innerHTML='';
+  document.getElementById('issue-confirm-btn').textContent=issueMode==='out'?'Uitgeven':'Retourneren';
+  refreshIssueProducts();
 }
 
 // Zoekt in productnaam, factuur-naam en kleurcodes — multi-token (AND)
@@ -1794,8 +2008,10 @@ function stepIssueQty(delta) {
 function selectIssueProduct(id) {
   const p=db.products.find(x=>x.id===id);
   if(!p) return;
+  const loc=getIssueLocation();
+  const locQty=getLocQty(id, loc);
   document.getElementById('issue-product').value=id;
-  document.getElementById('issue-selected').textContent=`✅ ${p.name} — op voorraad: ${p.qty} ${p.unit}`;
+  document.getElementById('issue-selected').textContent=`✅ ${p.name} — ${loc?`in ${locName(loc)}`:'op voorraad'}: ${locQty} ${p.unit}`;
   document.getElementById('issue-qty-unit').textContent=p.unit;
   document.getElementById('issue-confirm-btn').textContent=`${issueMode==='out'?'Uitgeven':'Retourneren'}: ${p.name}`;
 
@@ -1826,8 +2042,8 @@ function selectIssueProduct(id) {
       document.getElementById('issue-qty').value=nog||0.25;
     }
   } else {
-    // Uitgeven: als voorraad < 1, gebruik de voorraad als standaard hoeveelheid
-    const defaultQty = p.qty > 0 && p.qty < 1 ? p.qty : 1;
+    // Uitgeven: als locatievoorraad < 1, gebruik die voorraad als standaard hoeveelheid
+    const defaultQty = locQty > 0 && locQty < 1 ? locQty : 1;
     document.getElementById('issue-qty').value=defaultQty;
   }
 
@@ -1865,7 +2081,8 @@ async function confirmIssue() {
   if(issueMode==='out' && !projId) { alert('Kies eerst een project. Materiaal kan alleen op een project worden uitgegeven.'); return; }
   const note=document.getElementById('issue-note').value;
   const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
-  if(issueMode==='out'&&prod.qty<qty) { alert('Onvoldoende voorraad!'); return; }
+  const loc=getIssueLocation();
+  if(issueMode==='out'&&getLocQty(prodId,loc)<qty) { alert(`Onvoldoende voorraad in ${locName(loc)}!`); return; }
   // Kleur-validatie: als product 2+ kleurcodes heeft moet er een gekozen zijn
   const colorGroupVisible = document.getElementById('issue-color-group').style.display !== 'none';
   const colorCode = (document.getElementById('issue-color').value || '').trim() || null;
@@ -1878,10 +2095,9 @@ async function confirmIssue() {
     if(beschikbaar<=0) { alert(`Er staat niets meer op dit project van ${prod.name} om terug te boeken.`); return; }
     if(qty>beschikbaar) { alert(`Te veel: er staat nog maar ${beschikbaar} ${prod.unit} ${prod.name} op dit project.\n\n(Uitgegeven: ${uitgegeven}, reeds retour: ${reedsRetour})`); return; }
   }
-  const newQty=Math.round((prod.qty+(issueMode==='out'?-qty:qty))*100)/100;
   setSyncing('syncing');
-  await dbPatch('products', `id=eq.${prodId}`, {qty:newQty});
-  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null,color_code:colorCode});
+  await applyStockDelta(prodId, loc, issueMode==='out'?-qty:qty);
+  await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null,color_code:colorCode,location_id:loc});
   await loadAll();
 
   // Modal blijft open — reset product, project blijft staan
@@ -1896,14 +2112,134 @@ async function confirmIssue() {
   document.getElementById('issue-confirm-btn').textContent=issueMode==='out'?'Uitgeven':'Retourneren';
   document.getElementById('issue-search').value='';
 
-  // Herlaad productlijst
-  if(savedProjId) {
-    document.getElementById('issue-project').value=savedProjId;
-    onIssueProjectChange();
-  } else {
-    issueProducts=db.products;
-    renderIssueProductList(issueProducts);
+  // Herlaad productlijst (project én locatie blijven staan)
+  if(savedProjId) document.getElementById('issue-project').value=savedProjId;
+  if(issueMode==='in') onIssueProjectChange();
+  else refreshIssueProducts();
+}
+
+// ====================== TRANSFER (VERPLAATSEN) — v2.8.0 ======================
+// Vrij voor ALLE medewerkers: een verplaatsing verandert het totaal niet, alleen
+// de plek. Elke transfer wordt op naam gelogd in history (type 'transfer').
+let transferProducts=[];
+
+function openTransferModal() {
+  document.getElementById('transfer-from').innerHTML=locationOptions(null, true);
+  // NAAR: bewust geen default — verplichte keuze voorkomt misboekingen.
+  // Let op: value 'wh' = magazijn, '' = nog niet gekozen (anders botst het met de ''-=-magazijn conventie van VAN).
+  document.getElementById('transfer-to').innerHTML=
+    '<option value="" selected>— Kies bestemming —</option><option value="wh">🏠 Magazijn</option>'+
+    activeBuses().map(b=>`<option value="${b.id}">🚐 ${b.name}</option>`).join('');
+  document.getElementById('transfer-search').value='';
+  document.getElementById('transfer-product').value='';
+  document.getElementById('transfer-selected').textContent='';
+  document.getElementById('transfer-qty').value=1;
+  document.getElementById('transfer-qty-unit').textContent='';
+  document.getElementById('transfer-note').value='';
+  refreshTransferProducts();
+  openModal('modal-transfer');
+}
+
+function getTransferFrom() {
+  const v=document.getElementById('transfer-from').value;
+  return v?parseInt(v):null;
+}
+function getTransferTo() {
+  const v=document.getElementById('transfer-to').value;
+  if(v==='') return undefined;   // nog niet gekozen
+  if(v==='wh') return null;      // magazijn
+  return parseInt(v);
+}
+
+function refreshTransferProducts() {
+  const from=getTransferFrom();
+  // Alleen producten met voorraad op de VAN-locatie
+  transferProducts = from ? db.products.filter(p=>getBusQty(p.id,from)>0) : db.products.filter(p=>p.qty>0);
+  const q=document.getElementById('transfer-search').value||'';
+  const filtered=(q.trim()?transferProducts.filter(p=>productMatchesSearch(p,q)):transferProducts.slice());
+  sortProductsByNameColor(filtered);
+  renderTransferList(filtered);
+}
+
+function onTransferLocChange() {
+  document.getElementById('transfer-product').value='';
+  document.getElementById('transfer-selected').textContent='';
+  document.getElementById('transfer-qty-unit').textContent='';
+  refreshTransferProducts();
+}
+
+function renderTransferList(prods) {
+  const list=document.getElementById('transfer-product-list');
+  if(!prods.length) {
+    list.innerHTML='<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">Geen producten met voorraad op deze locatie</div>';
+    return;
   }
+  const from=getTransferFrom();
+  list.innerHTML=prods.map(p=>{
+    const q=getLocQty(p.id, from);
+    return `
+    <div onclick="selectTransferProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="transfer-prod-${p.id}">
+      <div style="font-weight:500">${p.name}</div>
+      ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${p.cat} · <span style="color:var(--green)">in ${locName(from)}: ${q} ${p.unit}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function filterTransferProducts() { refreshTransferProducts(); }
+function clearTransferSearch() {
+  document.getElementById('transfer-search').value='';
+  refreshTransferProducts();
+}
+
+function stepTransferQty(delta) {
+  const el=document.getElementById('transfer-qty');
+  const current=parseFloat(String(el.value||'').replace(',','.'))||0;
+  const val=Math.round((current+delta)*1000)/1000;
+  el.value=Math.max(0.125, val);
+}
+
+function selectTransferProduct(id) {
+  const p=db.products.find(x=>x.id===id); if(!p) return;
+  const from=getTransferFrom();
+  const avail=getLocQty(id, from);
+  document.getElementById('transfer-product').value=id;
+  document.getElementById('transfer-selected').textContent=`✅ ${p.name} — in ${locName(from)}: ${avail} ${p.unit}`;
+  document.getElementById('transfer-qty-unit').textContent=p.unit;
+  const defaultQty = avail > 0 && avail < 1 ? avail : 1;
+  document.getElementById('transfer-qty').value=defaultQty;
+  document.querySelectorAll('#transfer-product-list > div').forEach(el=>el.style.background='');
+  const el=document.getElementById('transfer-prod-'+id);
+  if(el) el.style.background='var(--surface)';
+}
+
+async function confirmTransfer() {
+  const prodId=parseInt(document.getElementById('transfer-product').value);
+  if(!prodId) { alert('Selecteer eerst een product.'); return; }
+  const qty=Math.round((parseFloat(String(document.getElementById('transfer-qty').value||'').replace(',','.'))||0)*1000)/1000;
+  if(qty<=0) { alert('Voer een geldige hoeveelheid in.'); return; }
+  const from=getTransferFrom();
+  const to=getTransferTo();
+  if(to===undefined) { alert('Kies een bestemming.'); return; }
+  if((from||null)===(to||null)) { alert('Van en naar zijn hetzelfde — kies twee verschillende locaties.'); return; }
+  const prod=db.products.find(p=>p.id===prodId); if(!prod) return;
+  const avail=getLocQty(prodId, from);
+  if(avail<qty) { alert(`Onvoldoende voorraad in ${locName(from)}: ${avail} ${prod.unit} beschikbaar.`); return; }
+  const note=document.getElementById('transfer-note').value;
+  setSyncing('syncing');
+  await applyStockDelta(prodId, from, -qty);
+  await applyStockDelta(prodId, to, qty);
+  await dbPost('history', {type:'transfer', product_id:prodId, qty, note, date:today(), employee_name:getCurrentEmployee()||null, location_id:from, location_to_id:to});
+  await loadAll();
+
+  // Modal blijft open — bus laden is meestal meerdere producten achter elkaar
+  document.getElementById('transfer-product').value='';
+  document.getElementById('transfer-selected').textContent=`✅ ${qty} ${prod.unit} ${prod.name} verplaatst naar ${locName(to)}! Kies volgend product:`;
+  document.getElementById('transfer-qty').value=1;
+  document.getElementById('transfer-qty-unit').textContent='';
+  document.getElementById('transfer-note').value='';
+  document.getElementById('transfer-search').value='';
+  refreshTransferProducts();
 }
 
 // ====================== DETAIL MODALS ======================
@@ -1912,11 +2248,13 @@ function openProductDetail(id) {
   const hist=db.history.filter(h=>h.productId===id).slice(0,10);
   const sup=db.suppliers.find(s=>s.id===p.supplier);
   document.getElementById('detail-title').textContent=p.name;
+  const busRows=(db.busStock||[]).filter(r=>r.productId===id&&r.qty>0).map(r=>({name:locName(r.busId), qty:r.qty}));
   document.getElementById('detail-content').innerHTML=`
     <div class="stat-grid" style="margin-bottom:14px">
-      <div class="stat-card"><div class="stat-val">${p.qty}</div><div class="stat-lbl">${p.unit} in voorraad</div></div>
-      <div class="stat-card"><div class="stat-val" style="font-size:20px">€${(p.qty*p.price).toFixed(0)}</div><div class="stat-lbl">Waarde</div></div>
+      <div class="stat-card"><div class="stat-val">${p.qty}</div><div class="stat-lbl">${p.unit} in magazijn</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">€${(totalQty(p)*p.price).toFixed(0)}</div><div class="stat-lbl">Waarde (totaal)</div></div>
     </div>
+    ${busRows.length?`<div class="card-sub" style="margin-bottom:6px">📍 In bussen: ${busRows.map(b=>`${b.name}: <strong style="font-family:'JetBrains Mono',monospace">${b.qty}</strong>`).join(' · ')} — totaal ${roundQty(totalQty(p))} ${p.unit}</div>`:''}
     <div class="card-sub" style="margin-bottom:6px">Categorie: ${p.cat} · Min: ${p.min} ${p.unit} · €${p.price}/${p.unit}</div>
     ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
     ${renderColorBlock(p.id)}
@@ -1929,10 +2267,12 @@ function openProductDetail(id) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':'📦 Ontvangen';
-      const meta=[h.date, h.employee?'👤 '+h.employee:'', h.note].filter(Boolean).join(' · ');
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':'📦 Ontvangen';
+      const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
+      const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
+      const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}</div>
+        <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}${route}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}`;
   openModal('modal-detail');
@@ -1970,7 +2310,7 @@ function openProjDetail(id) {
     <div class="section-hdr">Materiaalverbruik</div>
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
-      const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:''].filter(Boolean).join(' · ');
+      const meta=[h.date, h.type==='out'?'Uitgegeven':'Retour', h.employee?'👤 '+h.employee:'', h.locationId?'🚐 '+locName(h.locationId):''].filter(Boolean).join(' · ');
       const allCodes = (pr&&Array.isArray(pr.color_codes))?pr.color_codes:[];
       const codes = allCodes.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${allCodes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:'';
       return `<div class="proj-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})">
@@ -2076,6 +2416,51 @@ function renderSettings() {
         <button class="cat-del" onclick="deleteEmployee(${e.id})">×</button>
       </div>`).join('');
   }
+  const busEl=document.getElementById('bus-settings-list');
+  if(busEl) {
+    const buses=db.buses||[];
+    busEl.innerHTML=buses.length===0?'<div class="empty" style="padding:10px 0">Nog geen bussen</div>':
+      buses.map(b=>{
+        const stockCount=(db.busStock||[]).filter(r=>r.busId===b.id&&r.qty>0).length;
+        return `<div class="cat-tag" style="${b.active?'':'opacity:.5'}">
+        <span class="cat-name">🚐 ${b.name}${stockCount?` <span style="font-size:10px;color:var(--muted)">(${stockCount} producten)</span>`:''}${b.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
+        <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editBus(${b.id})">✏️</button>
+        <button class="cat-del" onclick="toggleBusActive(${b.id})" title="${b.active?'Op inactief zetten':'Heractiveren'}">${b.active?'⊘':'↺'}</button>
+      </div>`;
+      }).join('');
+  }
+}
+
+// ---------- Bussen CRUD (v2.8.0) ----------
+// Bussen worden nooit verwijderd (history verwijst ernaar) — alleen inactief gezet.
+async function addBus() {
+  const inp=document.getElementById('new-bus-input');
+  const name=inp.value.trim(); if(!name) return;
+  if((db.buses||[]).some(b=>b.name.toLowerCase()===name.toLowerCase())) { alert('Bestaat al.'); return; }
+  setSyncing('syncing');
+  const maxSort=(db.buses||[]).reduce((m,b)=>Math.max(m,b.sort),0);
+  await dbPost('buses', {name, sort_order:maxSort+1, active:true});
+  inp.value='';
+  await loadAll(); renderSettings();
+}
+async function editBus(id) {
+  const b=(db.buses||[]).find(x=>x.id===id); if(!b) return;
+  const newName=prompt('Busnaam aanpassen:', b.name);
+  if(!newName||newName.trim()===''||newName===b.name) return;
+  if((db.buses||[]).some(x=>x.id!==id&&x.name.toLowerCase()===newName.trim().toLowerCase())) { alert('Bestaat al.'); return; }
+  setSyncing('syncing');
+  await dbPatch('buses', `id=eq.${id}`, {name:newName.trim()});
+  await loadAll(); renderSettings();
+}
+async function toggleBusActive(id) {
+  const b=(db.buses||[]).find(x=>x.id===id); if(!b) return;
+  if(b.active) {
+    const stockCount=(db.busStock||[]).filter(r=>r.busId===id&&r.qty>0).length;
+    if(stockCount && !confirm(`${b.name} heeft nog ${stockCount} producten met voorraad.\nVerplaats die eerst terug naar het magazijn, anders telt die voorraad nog wel mee in het totaal maar zie je 'm nergens.\n\nToch op inactief zetten?`)) return;
+  }
+  setSyncing('syncing');
+  await dbPatch('buses', `id=eq.${id}`, {active:!b.active});
+  await loadAll(); renderSettings();
 }
 
 async function addEmployeeFromSettings() {
@@ -2140,9 +2525,19 @@ function openHistoryEdit(histId) {
     return;
   }
   const h=db.history.find(x=>x.id===histId); if(!h) return;
+  // Verplaatsingen: niet bewerkbaar (van+naar tegelijk wijzigen is foutgevoelig) — alleen verwijderen.
+  if(h.type==='transfer') {
+    const prod=db.products.find(p=>p.id===h.productId);
+    if(confirm(`Verplaatsing: ${h.qty}× ${prod?prod.name:'?'}\n${locName(h.locationId)} → ${locName(h.locationToId)}\n\nVerplaatsingen kun je niet bewerken, alleen verwijderen.\nDe voorraad op beide locaties wordt automatisch teruggedraaid.\n\nVerwijderen?`)) {
+      deleteTransferEntry(h);
+    }
+    return;
+  }
   document.getElementById('hist-edit-id').value=h.id;
   document.getElementById('hist-edit-employee').value=h.employee||'';
   document.getElementById('hist-edit-type').value=h.type;
+  // Vul locatie-dropdown (incl. inactieve bussen — oude boekingen kunnen daarnaar verwijzen)
+  document.getElementById('hist-edit-location').innerHTML=locationOptions(h.locationId||null, false);
   // Vul product-dropdown
   const prodSel=document.getElementById('hist-edit-product');
   prodSel.innerHTML=db.products.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
@@ -2190,10 +2585,13 @@ function onHistEditProductChange() {
 async function saveHistoryEdit() {
   const id=parseInt(document.getElementById('hist-edit-id').value);
   const oldH=db.history.find(x=>x.id===id); if(!oldH) { alert('Boeking niet gevonden.'); return; }
+  if(oldH.type==='transfer') { alert('Verplaatsingen kun je niet bewerken — verwijder de boeking en maak een nieuwe.'); return; }
   const newType=document.getElementById('hist-edit-type').value;
   const newProdId=parseInt(document.getElementById('hist-edit-product').value);
   const projVal=document.getElementById('hist-edit-project').value;
   const newProjId=projVal?parseInt(projVal):null;
+  const locVal=document.getElementById('hist-edit-location').value;
+  const newLoc=locVal?parseInt(locVal):null;
   const newQty=Math.round((parseFloat(document.getElementById('hist-edit-qty').value)||0)*1000)/1000;
   const newDate=document.getElementById('hist-edit-date').value||today();
   const newNote=document.getElementById('hist-edit-note').value;
@@ -2202,24 +2600,12 @@ async function saveHistoryEdit() {
   if(!newProdId) { alert('Kies een product.'); return; }
 
   setSyncing('syncing');
-  // 1. Rol oude impact terug op oude product
-  const oldProd=db.products.find(p=>p.id===oldH.productId);
-  if(oldProd) {
-    const delta=-historyStockDelta(oldH.type, oldH.qty); // omgekeerd
-    const updated=Math.max(0, Math.round((oldProd.qty+delta)*1000)/1000);
-    await dbPatch('products', `id=eq.${oldProd.id}`, {qty:updated});
-  }
-  // 2. Pas nieuwe impact toe op nieuw product (kan zelfde zijn)
-  const newProd=db.products.find(p=>p.id===newProdId);
-  if(newProd) {
-    // Belangrijk: als oldProd === newProd, dan is oldProd.qty al aangepast in stap 1.
-    // We moeten op de actuele DB-waarde verder werken — herlaad het product.
-    const fresh=await dbGet('products', `id=eq.${newProdId}&select=qty`);
-    const curQty=fresh&&fresh[0]?Number(fresh[0].qty)||0:newProd.qty;
-    const delta=historyStockDelta(newType, newQty);
-    const updated=Math.max(0, Math.round((curQty+delta)*1000)/1000);
-    await dbPatch('products', `id=eq.${newProdId}`, {qty:updated});
-  }
+  // 1. Rol oude impact terug op de OUDE locatie van het OUDE product
+  await applyStockDelta(oldH.productId, oldH.locationId||null, -historyStockDelta(oldH.type, oldH.qty));
+  // 2. Pas nieuwe impact toe op de NIEUWE locatie van het NIEUWE product.
+  //    applyStockDelta leest altijd de verse DB-waarde, dus ook correct als
+  //    oud en nieuw hetzelfde product/dezelfde locatie zijn.
+  await applyStockDelta(newProdId, newLoc, historyStockDelta(newType, newQty));
   // 3. Update history-regel zelf (employee blijft de oorspronkelijke)
   await dbPatch('history', `id=eq.${id}`, {
     type:newType,
@@ -2228,7 +2614,8 @@ async function saveHistoryEdit() {
     qty:newQty,
     date:newDate,
     note:newNote,
-    color_code:newColor
+    color_code:newColor,
+    location_id:newLoc
   });
   closeModal('modal-history');
   await loadAll();
@@ -2238,15 +2625,23 @@ async function deleteHistoryEntry() {
   const id=parseInt(document.getElementById('hist-edit-id').value);
   const h=db.history.find(x=>x.id===id); if(!h) return;
   const prod=db.products.find(p=>p.id===h.productId);
-  if(!confirm(`Boeking verwijderen?\n\n${h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Ontvangen'}: ${h.qty}× ${prod?prod.name:'?'}\n\nDe voorraad wordt automatisch hersteld.`)) return;
+  if(h.type==='transfer') { deleteTransferEntry(h); return; }  // defensief — modal opent normaal niet voor transfers
+  const locTxt=h.locationId?` (${locName(h.locationId)})`:'';
+  if(!confirm(`Boeking verwijderen?\n\n${h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Ontvangen'}: ${h.qty}× ${prod?prod.name:'?'}${locTxt}\n\nDe voorraad wordt automatisch hersteld.`)) return;
   setSyncing('syncing');
-  // Rol impact terug
-  if(prod) {
-    const delta=-historyStockDelta(h.type, h.qty);
-    const updated=Math.max(0, Math.round((prod.qty+delta)*1000)/1000);
-    await dbPatch('products', `id=eq.${prod.id}`, {qty:updated});
-  }
+  // Rol impact terug op de locatie van de boeking
+  await applyStockDelta(h.productId, h.locationId||null, -historyStockDelta(h.type, h.qty));
   await dbDelete('history', `id=eq.${id}`);
+  closeModal('modal-history');
+  await loadAll();
+}
+
+// Transfer verwijderen: voorraad op BEIDE locaties terugdraaien (van +qty, naar −qty)
+async function deleteTransferEntry(h) {
+  setSyncing('syncing');
+  await applyStockDelta(h.productId, h.locationId||null, h.qty);
+  await applyStockDelta(h.productId, h.locationToId||null, -h.qty);
+  await dbDelete('history', `id=eq.${h.id}`);
   closeModal('modal-history');
   await loadAll();
 }
@@ -2390,14 +2785,18 @@ function exportData() {
         categories: db.categories.length,
         suppliers: db.suppliers.length,
         projects: db.projects.length,
-        history: db.history.length
+        history: db.history.length,
+        buses: (db.buses||[]).length,
+        bus_stock: (db.busStock||[]).length
       }
     },
     products: db.products,
     categories: db.categories,
     suppliers: db.suppliers,
     projects: db.projects,
-    history: db.history
+    history: db.history,
+    buses: db.buses||[],
+    bus_stock: db.busStock||[]
   };
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], {type:'application/json'});
