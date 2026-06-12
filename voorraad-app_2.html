@@ -6,8 +6,8 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.8.0 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-06-10                                        ║
+  ║  Versie: 2.9.0 (zie APP_VERSION constante in script)                 ║
+  ║  Laatst gewijzigd: 2026-06-12                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -41,6 +41,12 @@
   ║    └─ NULL location_id = magazijn (backwards compatible)             ║
   ║    └─ besteladvies/min/target blijven op MAGAZIJN rekenen            ║
   ║    └─ waardering/dashboard-waarde = totaal (magazijn + bussen)       ║
+  ║  • Streefvoorraad per bus + bus aanvullen (v2.9.0)                   ║
+  ║    └─ bus_targets tabel: standaard aantal per bus per product        ║
+  ║    └─ 'Bus aanvullen' in voorraadlijst: tekort = streef − huidig     ║
+  ║    └─ gebundelde transfer magazijn → bus tot streef (vrij voor team) ║
+  ║    └─ magazijn ontoereikend → vult wat er is, ⚠ markering            ║
+  ║    └─ streef vastleggen via instellingen (eigenaar, huidige inhoud)  ║
   ║  • is_owner op employees — rolverdeling                              ║
   ║    └─ owners: voorraadmutaties, settings, history-edit, ontvangen    ║
   ║    └─ staff: alleen materiaal uitgeven/retourneren via project       ║
@@ -498,6 +504,15 @@
     <button class="btn btn-primary btn-full" id="transfer-confirm-btn" onclick="confirmTransfer()">Verplaatsen</button>
   </div>
 </div>
+<!-- BUS AANVULLEN (streefvoorraad) -->
+<div class="modal-overlay" id="modal-bus-refill">
+  <div class="modal">
+    <div class="modal-title" id="bus-refill-title">Bus aanvullen<span class="modal-close" onclick="closeModal('modal-bus-refill')">×</span></div>
+    <p id="bus-refill-intro" style="font-size:13px;color:var(--muted);margin-bottom:12px"></p>
+    <div id="bus-refill-list"></div>
+    <button class="btn btn-primary btn-full" id="bus-refill-btn" onclick="confirmBusRefill()">✓ Alles aanvullen naar bus</button>
+  </div>
+</div>
 <!-- RECEIVE SINGLE SUPPLIER -->
 <div class="modal-overlay" id="modal-receive-sup">
   <div class="modal">
@@ -578,18 +593,17 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.8.0';
-const BUILD_DATE = '2026-06-10';
+const APP_VERSION = '2.9.0';
+const BUILD_DATE = '2026-06-12';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — de bussen zijn nu echte voorraadlocaties:<br><br>
-  • <strong>🚐 Busvoorraad apart</strong>. Bovenaan de voorraadlijst kies je nu Magazijn of een bus (01, 25, 27, 968). Per bus zie je precies wat erin ligt.<br><br>
-  • <strong>🔁 Materiaal verplaatsen</strong>. Nieuwe knop onder de +. Laad je 's ochtends de bus? Boek de verplaatsing magazijn → bus. Iedereen mag dit — het duurt 10 seconden en de voorraad blijft kloppen.<br><br>
-  • <strong>🎨 Uitgeven vanuit de bus</strong>. Bij uitgeven/retourneren kies je voortaan de locatie. Werk je vanuit de bus, kies dan de bus — dan klopt de busvoorraad ook na het boeken.<br><br>
-  • Bestellen en minimum-voorraad blijven op het <strong>magazijn</strong> rekenen. De voorraadwaarde op het dashboard telt magazijn én bussen op.
+  <strong>Welkom bij v${APP_VERSION}</strong> — bus aanvullen tot streefvoorraad:<br><br>
+  • <strong>🔄 Bus aanvullen</strong>. Kies bovenaan je bus, en je ziet de knop "Aanvullen". Die laat zien hoeveel er van elk product bij moet om de bus weer op standaard te krijgen — en vult in één klap aan vanuit het magazijn. Ideaal aan het eind van de dag.<br><br>
+  • <strong>📌 Streefvoorraad per bus</strong>. Een eigenaar legt per bus de standaard vast via Instellingen → Bussen beheren ("Huidige voorraad vastleggen als streef"). Dat is de basis waarop het aanvullen rekent.<br><br>
+  • Heeft het magazijn te weinig? Dan vult de app aan wat er is en zet een ⚠️ bij dat product, zodat je weet dat het nog besteld moet worden.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -781,7 +795,7 @@ async function dbDelete(table, match) {
 }
 
 // ====================== LOCAL STATE ======================
-let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[], buses:[], busStock:[] };
+let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[], buses:[], busStock:[], busTargets:[] };
 
 function setSyncing(state) {
   const dot = document.getElementById('sync-dot');
@@ -792,7 +806,7 @@ function setSyncing(state) {
 async function loadAll() {
   setSyncing('syncing');
   try {
-    const [cats, sups, prods, projs, hist, emps, buses, busStock] = await Promise.all([
+    const [cats, sups, prods, projs, hist, emps, buses, busStock, busTargets] = await Promise.all([
       dbGet('categories', 'order=name.asc'),
       dbGet('suppliers',  'order=name.asc'),
       dbGetAll('products', 'order=name.asc'),
@@ -801,6 +815,7 @@ async function loadAll() {
       dbGet('employees',  'order=name.asc'),
       dbGet('buses',      'order=sort_order.asc'),
       dbGetAll('bus_stock', 'order=id.asc'),
+      dbGetAll('bus_targets', 'order=id.asc'),
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
@@ -819,6 +834,7 @@ async function loadAll() {
     db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false,isOwner:r.is_owner===true}));
     db.buses      = buses.map(r=>({id:r.id,name:r.name,sort:Number(r.sort_order)||0,active:r.active!==false}));
     db.busStock   = busStock.map(r=>({id:r.id,busId:r.bus_id,productId:r.product_id,qty:Number(r.qty)||0}));
+    db.busTargets = busTargets.map(r=>({id:r.id,busId:r.bus_id,productId:r.product_id,target:Number(r.target_qty)||0}));
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
@@ -858,6 +874,29 @@ function getBusQty(productId, busId) {
 }
 function busTotalQty(productId) {
   return (db.busStock||[]).filter(r=>r.productId===productId).reduce((s,r)=>s+r.qty,0);
+}
+// ---------- Streefvoorraad per bus (v2.9.0) ----------
+function getBusTarget(productId, busId) {
+  const row=(db.busTargets||[]).find(r=>r.productId===productId&&r.busId===busId);
+  return row?row.target:0;
+}
+// Lijst met aanvulregels voor een bus: producten met streef > huidige busvoorraad.
+// magazijn = wat er in het magazijn ligt; aanvullen = min(tekort, magazijn).
+function busRefillList(busId) {
+  return (db.busTargets||[])
+    .filter(t=>t.busId===busId && t.target>0)
+    .map(t=>{
+      const p=db.products.find(x=>x.id===t.productId);
+      if(!p) return null;
+      const huidig=getBusQty(t.productId, busId);
+      const tekort=Math.round((t.target-huidig)*1000)/1000;
+      const magazijn=p.qty;
+      const aanvullen=Math.max(0, Math.min(tekort, magazijn));
+      return { product:p, target:t.target, huidig, tekort, magazijn, aanvullen,
+               tekortMagazijn: tekort>magazijn };
+    })
+    .filter(r=>r && r.tekort>0)
+    .sort((a,b)=>a.product.name.localeCompare(b.product.name,'nl',{numeric:true,sensitivity:'base'}));
 }
 function totalQty(p) { return Math.round((p.qty+busTotalQty(p.id))*1000)/1000; }
 function getLocQty(productId, locationId) {
@@ -1093,13 +1132,17 @@ function renderStock() {
 
   // Summary-bar: aantal producten + totale waarde van huidige selectie
   const sumBar=document.getElementById('stock-summary-bar');
-  if(prods.length){
+  const refill=busMode?busRefillList(activeLocation):[];
+  if(prods.length || refill.length){
     const totalValue=prods.reduce((s,p)=>s+(busMode?getBusQty(p.id,activeLocation):(Number(p.qty)||0))*(Number(p.price)||0),0);
     const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
     const warning=zonderPrijs?` <span style="color:var(--accent)">⚠ ${zonderPrijs} zonder prijs</span>`:'';
     sumBar.style.display='';
     if(busMode){
-      sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="font-size:13px"><strong>${prods.length}</strong> producten in ${locName(activeLocation)} · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div></div>`;
+      const refillBtn=refill.length
+        ? `<button class="btn btn-primary" style="font-size:12px;padding:6px 12px;margin:0" onclick="openBusRefill(${activeLocation})">🔄 Aanvullen (${refill.length})</button>`
+        : `<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="openBusRefill(${activeLocation})">🔄 Bus aanvullen</button>`;
+      sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten in ${locName(activeLocation)} · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${refillBtn}</div></div>`;
     } else {
       sumBar.innerHTML=`<div class="card" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:13px"><strong>${prods.length}</strong> producten · waarde <strong style="color:var(--accent);font-family:'JetBrains Mono',monospace">€${totalValue.toFixed(2)}</strong>${warning}</div>${totalValue>0?`<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuation()">📤 Tekst</button><button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin:0" onclick="exportStockValuationCSV()">📊 Werkblad</button></div>`:''}</div></div>`;
     }
@@ -2249,6 +2292,74 @@ async function confirmTransfer() {
   refreshTransferProducts();
 }
 
+// ====================== BUS AANVULLEN (streefvoorraad) — v2.9.0 ======================
+// Vrij voor alle medewerkers: het is een gebundelde verplaatsing magazijn -> bus.
+let busRefillTarget=null;
+
+function openBusRefill(busId) {
+  busRefillTarget=busId;
+  renderBusRefill();
+  openModal('modal-bus-refill');
+}
+
+function renderBusRefill() {
+  const busId=busRefillTarget;
+  document.getElementById('bus-refill-title').innerHTML=`${locName(busId)} aanvullen<span class="modal-close" onclick="closeModal('modal-bus-refill')">×</span>`;
+  const list=busRefillList(busId);
+  const intro=document.getElementById('bus-refill-intro');
+  const btn=document.getElementById('bus-refill-btn');
+  const heeftStreef=(db.busTargets||[]).some(t=>t.busId===busId && t.target>0);
+
+  if(!heeftStreef) {
+    intro.innerHTML='Voor deze bus is nog geen streefvoorraad ingesteld. Een eigenaar kan dat doen via <strong>Instellingen → Bussen beheren → 📌 Streef vastleggen</strong>.';
+    document.getElementById('bus-refill-list').innerHTML='';
+    btn.style.display='none';
+    return;
+  }
+  if(!list.length) {
+    intro.textContent='Deze bus is helemaal op streef — niets aan te vullen. 👍';
+    document.getElementById('bus-refill-list').innerHTML='';
+    btn.style.display='none';
+    return;
+  }
+
+  const totaalKort=list.some(r=>r.tekortMagazijn);
+  intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}`;
+  document.getElementById('bus-refill-list').innerHTML=list.map(r=>{
+    const kortBadge=r.tekortMagazijn?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ magazijn ${r.magazijn}</span>`:'';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:0">
+        <div style="font-weight:500;font-size:14px">${r.product.name}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">nu ${r.huidig} · streef ${r.target} · tekort ${r.tekort} ${kortBadge}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${r.aanvullen>0?'var(--green)':'var(--muted)'}">+${r.aanvullen}</div>
+        <div style="font-size:10px;color:var(--muted)">${r.product.unit}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const totaalAanvullen=list.reduce((s,r)=>s+r.aanvullen,0);
+  btn.style.display=totaalAanvullen>0?'':'none';
+  btn.textContent=`✓ Alles aanvullen naar ${locName(busId)}`;
+  if(totaalAanvullen<=0) {
+    intro.innerHTML+='<br><span style="color:var(--accent)">Het magazijn heeft niets om aan te vullen.</span>';
+  }
+}
+
+async function confirmBusRefill() {
+  const busId=busRefillTarget;
+  const list=busRefillList(busId).filter(r=>r.aanvullen>0);
+  if(!list.length) { alert('Niets aan te vullen.'); return; }
+  setSyncing('syncing');
+  for(const r of list) {
+    await applyStockDelta(r.product.id, null, -r.aanvullen);      // uit magazijn
+    await applyStockDelta(r.product.id, busId, r.aanvullen);       // naar bus
+    await dbPost('history', {type:'transfer', product_id:r.product.id, qty:r.aanvullen, note:'Bus aangevuld tot streef', date:today(), employee_name:getCurrentEmployee()||null, location_id:null, location_to_id:busId});
+  }
+  closeModal('modal-bus-refill');
+  await loadAll();
+}
+
 // ====================== DETAIL MODALS ======================
 function openProductDetail(id) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
@@ -2429,13 +2540,41 @@ function renderSettings() {
     busEl.innerHTML=buses.length===0?'<div class="empty" style="padding:10px 0">Nog geen bussen</div>':
       buses.map(b=>{
         const stockCount=(db.busStock||[]).filter(r=>r.busId===b.id&&r.qty>0).length;
-        return `<div class="cat-tag" style="${b.active?'':'opacity:.5'}">
-        <span class="cat-name">🚐 ${b.name}${stockCount?` <span style="font-size:10px;color:var(--muted)">(${stockCount} producten)</span>`:''}${b.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
-        <button class="cat-del" style="color:var(--accent2);font-size:16px;margin-right:4px" onclick="editBus(${b.id})">✏️</button>
-        <button class="cat-del" onclick="toggleBusActive(${b.id})" title="${b.active?'Op inactief zetten':'Heractiveren'}">${b.active?'⊘':'↺'}</button>
+        const targetCount=(db.busTargets||[]).filter(t=>t.busId===b.id&&t.target>0).length;
+        return `<div class="card" style="padding:12px 14px;margin-bottom:8px;${b.active?'':'opacity:.5'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-weight:500">🚐 ${b.name}${b.active?'':' <span style="font-size:10px;color:var(--muted)">(inactief)</span>'}</span>
+          <span style="display:flex;gap:4px;flex-shrink:0">
+            <button class="cat-del" style="color:var(--accent2);font-size:16px" onclick="editBus(${b.id})" title="Naam wijzigen">✏️</button>
+            <button class="cat-del" onclick="toggleBusActive(${b.id})" title="${b.active?'Op inactief zetten':'Heractiveren'}">${b.active?'⊘':'↺'}</button>
+          </span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${stockCount} producten in voorraad · streef: ${targetCount?targetCount+' producten':'nog niet ingesteld'}</div>
+        <button class="btn btn-secondary btn-full" style="font-size:12px;padding:7px 12px;margin-top:10px" onclick="setBusTargetsFromStock(${b.id})">📌 Huidige voorraad vastleggen als streef</button>
       </div>`;
       }).join('');
   }
+}
+
+// ---------- Streefvoorraad vastleggen (v2.9.0) ----------
+// Legt de HUIDIGE busvoorraad vast als de standaard (streef) voor die bus.
+// Vervangt een eventueel bestaande streef volledig — doe dit als de bus "op standaard" is.
+async function setBusTargetsFromStock(busId) {
+  if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen de streefvoorraad instellen.'); return; }
+  const bus=(db.buses||[]).find(b=>b.id===busId); if(!bus) return;
+  const huidig=(db.busStock||[]).filter(r=>r.busId===busId && r.qty>0);
+  if(!huidig.length) { alert(`${bus.name} is leeg — er is niets om als streef vast te leggen. Vul de bus eerst met de standaard voorraad.`); return; }
+  const bestaand=(db.busTargets||[]).some(t=>t.busId===busId && t.target>0);
+  const waarschuwing=bestaand?'\n\nDe huidige streefwaarden voor deze bus worden hierdoor vervangen.':'';
+  if(!confirm(`De huidige inhoud van ${bus.name} (${huidig.length} producten) vastleggen als standaard streefvoorraad?${waarschuwing}`)) return;
+  setSyncing('syncing');
+  // Schone lei: bestaande streef voor deze bus weg, dan opnieuw vastleggen
+  await dbDelete('bus_targets', `bus_id=eq.${busId}`);
+  for(const r of huidig) {
+    await dbPost('bus_targets', {bus_id:busId, product_id:r.productId, target_qty:r.qty});
+  }
+  await loadAll();
+  renderSettings();
 }
 
 // ---------- Bussen CRUD (v2.8.0) ----------
