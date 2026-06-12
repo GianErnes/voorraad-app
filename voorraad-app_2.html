@@ -1053,6 +1053,12 @@ let activeCat='Alles';
 let activeSupplier='all';  // 'all' | supplierId | 'none' (zonder leverancier)
 let activeLocation=null;   // null = magazijn, anders bus-id (v2.8.0)
 function renderStock() {
+  // Tijdens zoeken: categorie- en leverancierchips inklappen, zodat de resultaten
+  // meteen onder de zoekbalk verschijnen (geen scrollen langs alle tegels).
+  // Locatie-chips blijven staan als context: in welk magazijn/bus zoek je.
+  const searching=((document.getElementById('stock-search')||{}).value||'').trim().length>0;
+  const _catEl=document.getElementById('cat-filters'); if(_catEl) _catEl.style.display=searching?'none':'';
+  const _supEl=document.getElementById('sup-filters'); if(_supEl) _supEl.style.display=searching?'none':'';
   // Locatie-chips: magazijn + actieve bussen (telling = producten met voorraad in die bus)
   const locEl=document.getElementById('loc-filters');
   if(locEl) {
@@ -1092,9 +1098,10 @@ function renderStock() {
   document.getElementById('cat-filters').innerHTML=cats.map(c=>`<div class="chip${c.key===activeCat?' active':''}" onclick="filterCat(this)" data-cat="${c.key.replace(/"/g,'&quot;')}">${c.label}</div>`).join('');
   const minEl=document.getElementById('min-filters'); if(minEl) minEl.innerHTML='';
 
-  // Eerste filterstap: categorie / virtuele categorie
+  // Eerste filterstap: categorie / virtuele categorie (tijdens zoeken overgeslagen → doorzoek alles)
   let prods;
-  if(activeCat==='Alles') prods=baseSet;
+  if(searching) prods=baseSet;
+  else if(activeCat==='Alles') prods=baseSet;
   else if(activeCat==='🎯 Actief') prods=baseSet.filter(p=>Number(p.min)>0);
   else if(activeCat==='💶 € 0,00') prods=baseSet.filter(p=>!Number(p.price));
   else prods=baseSet.filter(p=>p.cat===activeCat);
@@ -1118,9 +1125,11 @@ function renderStock() {
   if(activeSupplier!=='all' && activeSupplier!=='none' && !supCounts[parseInt(activeSupplier)]) activeSupplier='all';
   if(activeSupplier==='none' && noSupCount===0) activeSupplier='all';
 
-  // Tweede filterstap: leverancier
-  if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier);
-  else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
+  // Tweede filterstap: leverancier (tijdens zoeken overgeslagen)
+  if(!searching) {
+    if(activeSupplier==='none') prods=prods.filter(p=>!p.supplier);
+    else if(activeSupplier!=='all') prods=prods.filter(p=>p.supplier===parseInt(activeSupplier));
+  }
 
   // Derde filterstap: zoek
   const search=(document.getElementById('stock-search')||{}).value||'';
