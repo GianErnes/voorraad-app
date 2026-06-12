@@ -1142,7 +1142,7 @@ function renderStock() {
   // Summary-bar: aantal producten + totale waarde van huidige selectie
   const sumBar=document.getElementById('stock-summary-bar');
   const refill=busMode?busRefillList(activeLocation):[];
-  if(prods.length || refill.length){
+  if(prods.length || refill.length || busMode){
     const totalValue=prods.reduce((s,p)=>s+(busMode?getBusQty(p.id,activeLocation):(Number(p.qty)||0))*(Number(p.price)||0),0);
     const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
     const warning=zonderPrijs?` <span style="color:var(--accent)">⚠ ${zonderPrijs} zonder prijs</span>`:'';
