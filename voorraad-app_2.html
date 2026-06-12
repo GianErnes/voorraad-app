@@ -1177,7 +1177,9 @@ function renderStock() {
           <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${bq} ${p.unit} in ${locName(activeLocation)} · magazijn: ${p.qty} · €${p.price}</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
             ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
-            <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${bq}</div>
+            ${isOwner
+              ? `<input type="number" inputmode="decimal" value="${bq}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value)" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
+              : `<div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${bq}</div>`}
             ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
           </div>
         </div>`;
@@ -1193,7 +1195,9 @@ function renderStock() {
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad${busTotalQty(p.id)?` · 🚐 ${roundQty(busTotalQty(p.id))} in bussen`:''} · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
-          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>
+          ${isOwner
+            ? `<input type="number" inputmode="decimal" value="${p.qty}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value)" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
+            : `<div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>`}
           ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
           <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
         </div>
@@ -1371,6 +1375,26 @@ async function quickQty(id, delta) {
   renderStock();
   await dbPatch('products', `id=eq.${id}`, {qty:newQty});
   await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today(), employee_name:getCurrentEmployee()||null});
+}
+
+// Directe invoer van een absolute voorraadwaarde (typen i.p.v. +/−).
+// Berekent zelf het verschil en boekt dat als correctie, net als quickQty.
+async function setQty(id, value) {
+  const p=db.products.find(x=>x.id===id); if(!p) return;
+  const newQty=Math.max(0, Math.round((parseFloat(String(value).replace(',','.'))||0)*1000)/1000);
+  const loc=activeLocation||null;
+  const cur=loc?getBusQty(id, loc):p.qty;
+  const delta=Math.round((newQty-cur)*1000)/1000;
+  if(delta===0) { renderStock(); return; }   // niets veranderd
+  if(loc) {
+    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===loc);
+    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:loc,productId:id,qty:newQty});
+  } else {
+    p.qty=newQty;
+  }
+  renderStock();
+  await applyStockDelta(id, loc, delta);
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Voorraad ingesteld', date:today(), employee_name:getCurrentEmployee()||null, location_id:loc});
 }
 
 // ====================== PROJECTS ======================
