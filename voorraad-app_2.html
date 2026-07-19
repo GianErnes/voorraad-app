@@ -593,16 +593,17 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.2';
+const APP_VERSION = '2.9.4';
 const BUILD_DATE = '2026-07-19';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — retour kan nooit meer boven uitgifte uitkomen:<br><br>
-  • Het retour-scherm blokkeerde dit al. Nu blokkeren ook <strong>correcties in de historie</strong> (bewerken én verwijderen) hard zodra een project daardoor meer retour dan uitgegeven zou krijgen. De app vertelt in welke volgorde je wél moet corrigeren.<br><br>
-  • Materiaallijst en projectkosten tellen alleen nog echte uitgifte/retour-boekingen mee — ontvangst- of verplaatsboekingen die per ongeluk aan een project hangen verschijnen niet meer als retour.
+  <strong>Welkom bij v${APP_VERSION}</strong>:<br><br>
+  • <strong>↩️ Retourneren verbeterd</strong>. De lijst toont nu per product hoeveel er <em>nog op het project openstaat</em> — dus wat je maximaal kunt terugboeken — in plaats van de magazijnvoorraad. Producten die al volledig retour zijn, staan er niet meer tussen.<br><br>
+  • <strong>📷 Scanner op de computer</strong> sluit nu altijd netjes via ✕, ESC of een klik ernaast — ook als de camera weigert.<br><br>
+  • Voor eigenaren: correcties in de historie worden geblokkeerd als een project daardoor meer retour dan uitgegeven zou krijgen.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -1896,14 +1897,23 @@ function openIssueModal(mode) {
 function renderIssueProductList(prods) {
   const list=document.getElementById('issue-product-list');
   if(!prods.length) {
-    list.innerHTML='<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">Geen producten gevonden</div>';
+    list.innerHTML=`<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">${issueMode==='in'?'Niets meer openstaand op dit project':'Geen producten gevonden'}</div>`;
     return;
   }
   const loc=getIssueLocation();
+  const retourProjId=issueMode==='in'?(parseInt(document.getElementById('issue-project').value)||null):null;
   list.innerHTML=prods.map(p=>{
-    const q=loc?getBusQty(p.id,loc):p.qty;
-    const stockTxt=loc?`in ${locName(loc)}: ${q} ${p.unit}`:`op voorraad: ${q} ${p.unit}`;
-    const stockColor=loc?(q>0?'var(--green)':'var(--red)'):(p.qty<=p.min?'var(--red)':'var(--green)');
+    let stockTxt, stockColor;
+    if(issueMode==='in') {
+      // Retour: toon wat er nog op het PROJECT openstaat, niet de magazijnvoorraad (v2.9.4)
+      const open=projectSaldo(retourProjId, p.id);
+      stockTxt=`nog op project: ${open} ${p.unit}`;
+      stockColor=open>0?'var(--green)':'var(--red)';
+    } else {
+      const q=loc?getBusQty(p.id,loc):p.qty;
+      stockTxt=loc?`in ${locName(loc)}: ${q} ${p.unit}`:`op voorraad: ${q} ${p.unit}`;
+      stockColor=loc?(q>0?'var(--green)':'var(--red)'):(p.qty<=p.min?'var(--red)':'var(--green)');
+    }
     return `
     <div onclick="selectIssueProduct(${p.id})" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px" id="issue-prod-${p.id}">
       <div style="font-weight:500">${p.name}</div>
@@ -2150,7 +2160,8 @@ function onIssueProjectChange() {
     renderIssueProductList([]);
     return;
   }
-  issueProducts=db.products.filter(p=>productIds.includes(p.id));
+  // Alleen producten waar nog saldo op het project openstaat (v2.9.4)
+  issueProducts=db.products.filter(p=>productIds.includes(p.id)&&projectSaldo(projId,p.id)>0);
   document.getElementById('issue-search').value='';
   renderIssueProductList(issueProducts);
 }
@@ -2922,12 +2933,21 @@ function initScanner() {
     const hints=new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     codeReader.hints=hints;
-    codeReader.decodeFromConstraints(
+    const p=codeReader.decodeFromConstraints(
       {video:{facingMode:'environment', width:{ideal:1280}, height:{ideal:720}}},
       'scan-video',
       (result)=>{ if(result) handleScanResult(result.getText()); }
     );
-  } catch(e) { document.getElementById('scan-status').textContent='❌ Camera niet beschikbaar.'; }
+    // decodeFromConstraints faalt als Promise (geen camera / toegang geweigerd) —
+    // de try/catch hieronder vangt dat niet, dus expliciet afhandelen (v2.9.3).
+    if(p&&p.catch) p.catch(e=>{
+      const naam=(e&&e.name)||'';
+      document.getElementById('scan-status').textContent=
+        naam==='NotAllowedError' ? '❌ Cameratoegang geweigerd — sta de camera toe in de browserinstellingen, of sluit met ✕.'
+        : naam==='NotFoundError' ? '❌ Geen camera gevonden op dit apparaat. Sluit met ✕ en zoek het product handmatig.'
+        : '❌ Camera niet beschikbaar. Sluit met ✕ en zoek het product handmatig.';
+    });
+  } catch(e) { document.getElementById('scan-status').textContent='❌ Camera niet beschikbaar. Sluit met ✕.'; }
 }
 
 function handleScanResult(code) {
@@ -2990,10 +3010,13 @@ function barcodeChoose(id) {
   if(modal) modal.remove();
 }
 function stopScan() {
-  if(codeReader){codeReader.reset();codeReader=null;}
-  const vid=document.getElementById('scan-video');
-  if(vid&&vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null;}
+  // Modal ALTIJD eerst sluiten — cleanup mag nooit de uitweg blokkeren (iMac-fix v2.9.3)
   closeModal('modal-scanner');
+  try { if(codeReader){codeReader.reset();codeReader=null;} } catch(e) { codeReader=null; }
+  try {
+    const vid=document.getElementById('scan-video');
+    if(vid&&vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null;}
+  } catch(e) {}
 }
 
 // ====================== EXPORT DATA (BACKUP) ======================
@@ -3055,6 +3078,13 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 // Enter-toets in owner-pin input
 const ownerPinInput=document.getElementById('owner-pin-input');
 if(ownerPinInput) ownerPinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmOwnerPin(); });
+// Scanner altijd te verlaten op desktop: ESC of klik naast het venster (v2.9.3)
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'&&document.getElementById('modal-scanner').classList.contains('open')) stopScan();
+});
+document.getElementById('modal-scanner').addEventListener('click', e=>{
+  if(e.target===e.currentTarget) stopScan();
+});
 
 // ====================== VERSIE-INDICATOR + WELKOMSTKAART ======================
 function showChangelog() {
