@@ -593,17 +593,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.0';
-const BUILD_DATE = '2026-06-12';
+const APP_VERSION = '2.9.2';
+const BUILD_DATE = '2026-07-19';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong> — bus aanvullen tot streefvoorraad:<br><br>
-  • <strong>🔄 Bus aanvullen</strong>. Kies bovenaan je bus, en je ziet de knop "Aanvullen". Die laat zien hoeveel er van elk product bij moet om de bus weer op standaard te krijgen — en vult in één klap aan vanuit het magazijn. Ideaal aan het eind van de dag.<br><br>
-  • <strong>📌 Streefvoorraad per bus</strong>. Een eigenaar legt per bus de standaard vast via Instellingen → Bussen beheren ("Huidige voorraad vastleggen als streef"). Dat is de basis waarop het aanvullen rekent.<br><br>
-  • Heeft het magazijn te weinig? Dan vult de app aan wat er is en zet een ⚠️ bij dat product, zodat je weet dat het nog besteld moet worden.
+  <strong>v${APP_VERSION}</strong> — retour kan nooit meer boven uitgifte uitkomen:<br><br>
+  • Het retour-scherm blokkeerde dit al. Nu blokkeren ook <strong>correcties in de historie</strong> (bewerken én verwijderen) hard zodra een project daardoor meer retour dan uitgegeven zou krijgen. De app vertelt in welke volgorde je wél moet corrigeren.<br><br>
+  • Materiaallijst en projectkosten tellen alleen nog echte uitgifte/retour-boekingen mee — ontvangst- of verplaatsboekingen die per ongeluk aan een project hangen verschijnen niet meer als retour.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -2155,6 +2154,21 @@ function onIssueProjectChange() {
   document.getElementById('issue-search').value='';
   renderIssueProductList(issueProducts);
 }
+// Netto saldo van één product op één project: uitgegeven − retour.
+// negeerId: history-id dat buiten beschouwing blijft (bij bewerken/verwijderen van
+// die regel zelf). Ontvangst-boekingen ('order') en transfers tellen niet mee.
+function projectSaldo(projId, prodId, negeerId) {
+  if(!projId||!prodId) return 0;
+  let saldo=0;
+  db.history.forEach(h=>{
+    if(h.projectId!==projId||h.productId!==prodId) return;
+    if(negeerId&&h.id===negeerId) return;
+    if(h.type==='out') saldo+=h.qty;
+    else if(h.type==='in') saldo-=h.qty;
+  });
+  return Math.round(saldo*1000)/1000;
+}
+
 async function confirmIssue() {
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
@@ -2174,7 +2188,7 @@ async function confirmIssue() {
   if(issueMode==='in' && projId) {
     const uitgegeven=db.history.filter(h=>h.projectId===projId&&h.productId===prodId&&h.type==='out').reduce((s,h)=>s+h.qty,0);
     const reedsRetour=db.history.filter(h=>h.projectId===projId&&h.productId===prodId&&h.type==='in').reduce((s,h)=>s+h.qty,0);
-    const beschikbaar=Math.round((uitgegeven-reedsRetour)*100)/100;
+    const beschikbaar=projectSaldo(projId, prodId);
     if(beschikbaar<=0) { alert(`Er staat niets meer op dit project van ${prod.name} om terug te boeken.`); return; }
     if(qty>beschikbaar) { alert(`Te veel: er staat nog maar ${beschikbaar} ${prod.unit} ${prod.name} op dit project.\n\n(Uitgegeven: ${uitgegeven}, reeds retour: ${reedsRetour})`); return; }
   }
@@ -2435,6 +2449,7 @@ function openProjDetail(id) {
   // Materiaalkosten = alleen positief netto verbruik per product (consistent met export)
   const productNet={};
   lines.forEach(h=>{
+    if(h.type!=='out'&&h.type!=='in') return; // order/transfer tellen niet mee
     if(!productNet[h.productId]) productNet[h.productId]=0;
     productNet[h.productId] += h.type==='out'?h.qty:-h.qty;
   });
@@ -2499,7 +2514,8 @@ function exportProject(id) {
       grouped[key]={out:0,ret:0,unit:pr.unit,prijs:pr.price,label};
     }
     if(h.type==='out') grouped[key].out += h.qty;
-    else grouped[key].ret += h.qty;
+    else if(h.type==='in') grouped[key].ret += h.qty;
+    // order/transfer met (per ongeluk) een project_id tellen bewust niet mee
   });
 
   const verbruikt=[], heenEnTerug=[], teveelRetour=[];
@@ -2778,6 +2794,26 @@ async function saveHistoryEdit() {
   if(newQty<=0) { alert('Aantal moet groter dan 0 zijn.'); return; }
   if(!newProdId) { alert('Kies een product.'); return; }
 
+  // Boekfout-blokkade (v2.9.2): een correctie mag NOOIT een project achterlaten
+  // waar méér retour staat dan er heen is geboekt. Harde stop — corrigeer in de
+  // juiste volgorde: eerst de retour-boeking aanpassen/verwijderen, dan de uitgifte.
+  const naNieuw=projectSaldo(newProjId, newProdId, id)+(newType==='out'?newQty:newType==='in'?-newQty:0);
+  if(newProjId&&naNieuw<0) {
+    const pr=db.products.find(x=>x.id===newProdId);
+    const proj=db.projects.find(x=>x.id===newProjId);
+    alert(`❌ Niet mogelijk: ${pr?pr.name:'dit product'} zou dan op ${Math.round(naNieuw*1000)/1000} ${pr?pr.unit:''} komen op ${proj?proj.name:'dit project'} — meer retour dan uitgegeven.\n\nPas eerst de retour-boeking van dit product aan.`);
+    return;
+  }
+  if(oldH.projectId&&(oldH.projectId!==newProjId||oldH.productId!==newProdId)) {
+    const naOud=projectSaldo(oldH.projectId, oldH.productId, id);
+    if(naOud<0) {
+      const pr=db.products.find(x=>x.id===oldH.productId);
+      const proj=db.projects.find(x=>x.id===oldH.projectId);
+      alert(`❌ Niet mogelijk: door deze boeking te verplaatsen komt ${pr?pr.name:'het product'} op ${naOud} ${pr?pr.unit:''} op ${proj?proj.name:'het oude project'} — meer retour dan uitgegeven.\n\nPas eerst de retour-boeking op dat project aan.`);
+      return;
+    }
+  }
+
   setSyncing('syncing');
   // 1. Rol oude impact terug op de OUDE locatie van het OUDE product
   await applyStockDelta(oldH.productId, oldH.locationId||null, -historyStockDelta(oldH.type, oldH.qty));
@@ -2806,6 +2842,16 @@ async function deleteHistoryEntry() {
   const prod=db.products.find(p=>p.id===h.productId);
   if(h.type==='transfer') { deleteTransferEntry(h); return; }  // defensief — modal opent normaal niet voor transfers
   const locTxt=h.locationId?` (${locName(h.locationId)})`:'';
+  // Boekfout-blokkade (v2.9.2): een uitgifte weghalen terwijl de retour blijft
+  // staan is niet toegestaan — verwijder eerst de retour-boeking.
+  if(h.projectId) {
+    const naVerwijderen=projectSaldo(h.projectId, h.productId, h.id);
+    if(naVerwijderen<0) {
+      const proj=db.projects.find(x=>x.id===h.projectId);
+      alert(`❌ Niet mogelijk: na verwijderen zou ${prod?prod.name:'dit product'} op ${naVerwijderen} ${prod?prod.unit:''} komen op ${proj?proj.name:'dit project'} — meer retour dan uitgegeven.\n\nVerwijder eerst de bijbehorende retour-boeking, dan deze.`);
+      return;
+    }
+  }
   if(!confirm(`Boeking verwijderen?\n\n${h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':'Ontvangen'}: ${h.qty}× ${prod?prod.name:'?'}${locTxt}\n\nDe voorraad wordt automatisch hersteld.`)) return;
   setSyncing('syncing');
   // Rol impact terug op de locatie van de boeking
