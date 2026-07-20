@@ -593,17 +593,15 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.4';
+const APP_VERSION = '2.9.5';
 const BUILD_DATE = '2026-07-19';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>Welkom bij v${APP_VERSION}</strong>:<br><br>
-  • <strong>↩️ Retourneren verbeterd</strong>. De lijst toont nu per product hoeveel er <em>nog op het project openstaat</em> — dus wat je maximaal kunt terugboeken — in plaats van de magazijnvoorraad. Producten die al volledig retour zijn, staan er niet meer tussen.<br><br>
-  • <strong>📷 Scanner op de computer</strong> sluit nu altijd netjes via ✕, ESC of een klik ernaast — ook als de camera weigert.<br><br>
-  • Voor eigenaren: correcties in de historie worden geblokkeerd als een project daardoor meer retour dan uitgegeven zou krijgen.
+  <strong>v${APP_VERSION}</strong> — medewerker-keuze verplicht gemaakt:<br><br>
+  • Het "Wie ben jij vandaag?"-scherm was weg te klikken door op het donkere vlak erboven te tikken — je zat dan zonder naam in de app en boekingen kregen geen medewerker. Dat kan niet meer: bij de verplichte keuze doet de overlay niets. Bij "Wissel van medewerker" blijft wegklikken gewoon werken.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -3073,7 +3071,13 @@ window.addEventListener('unhandledrejection', e => {
 });
 
 document.querySelectorAll('.modal-overlay').forEach(el=>{
-  el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);});
+  el.addEventListener('click',e=>{
+    if(e.target!==el) return;
+    // Verplichte medewerker-keuze (× verborgen) mag je niet wegklikken — anders
+    // beland je zonder naam in de app en boeken acties zonder medewerker (v2.9.5)
+    if(el.id==='modal-employee' && document.getElementById('emp-modal-close').style.display==='none') return;
+    closeModal(el.id);
+  });
 });
 // Enter-toets in owner-pin input
 const ownerPinInput=document.getElementById('owner-pin-input');
