@@ -1,13 +1,16 @@
 
 
 
+
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.0 (zie APP_VERSION constante in script)                 ║
-  ║  Laatst gewijzigd: 2026-06-12                                        ║
+  ║  Versie: 2.9.6 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
+  ║  een verouderd nummer en gaat die van een oude basis uit.            ║
+  ║  Laatst gewijzigd: 2026-07-24                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -593,15 +596,19 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.5';
-const BUILD_DATE = '2026-07-19';
+const APP_VERSION = '2.9.6';
+const BUILD_DATE = '2026-07-24';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — medewerker-keuze verplicht gemaakt:<br><br>
-  • Het "Wie ben jij vandaag?"-scherm was weg te klikken door op het donkere vlak erboven te tikken — je zat dan zonder naam in de app en boekingen kregen geen medewerker. Dat kan niet meer: bij de verplichte keuze doet de overlay niets. Bij "Wissel van medewerker" blijft wegklikken gewoon werken.
+  <strong>v${APP_VERSION}</strong> — sneller synchroniseren tussen telefoons:<br><br>
+  • De app haalde elke 10 seconden de complete geschiedenis op. Die tabel groeit alleen maar, dus op 4G duurde zo'n ronde soms langer dan de tussenpoos zelf — daardoor zag je een boeking van een collega pas veel later. Nu wordt er elke 5 seconden één piepklein controlevraagje gesteld en pas echt opgehaald als er iets veranderd is.<br><br>
+  • Telefoon uit je zak? De cijfers verversen nu meteen. iOS zet timers stil zodra het scherm op slot gaat; je keek daarna naar de stand van vóór het slotscherm.<br><br>
+  • De lijst wordt niet meer bijgewerkt terwijl je in een invoerveld staat te typen.<br><br>
+  • Bij het aanpassen van een aantal wordt de locatie nu vastgehouden vanaf het moment dat je het veld aantikt. Wisselde je van bus-tab terwijl het veld nog openstond, dan kon de correctie op de verkeerde bus landen.<br><br>
+  • Correcties krijgen een duidelijkere regel in de geschiedenis: "Voorraad ingesteld 11 → 4 (Bus 27)" in plaats van alleen "Voorraad ingesteld".
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -801,6 +808,29 @@ function setSyncing(state) {
 }
 
 // ====================== LOAD ALL DATA ======================
+// Twee snelheden sinds v2.9.6:
+//   loadAll()  — volledige ronde: alle tabellen, history compleet in chunks van 1000.
+//   loadSync() — lichte ronde: alleen de voorraadtabellen (products/bus_stock/
+//                bus_targets) plus de history-regels die er sinds de vorige ronde
+//                bij zijn gekomen (id > lastHistoryId).
+// Reden: de history is de zwaarste tabel en groeit alleen maar. Die elke tien
+// seconden compleet ophalen liet telefoons met een matige verbinding structureel
+// achterlopen — dát was het "Bjorn ziet Max' boeking niet"-probleem.
+let lastHistoryId = 0;     // hoogste history-id dat in de cache zit
+let lastFullLoad  = 0;     // tijdstip van de laatste volledige ronde
+const FULL_EVERY_MS = 60000;  // minstens eens per minuut alsnog alles ophalen
+
+// Mappers gedeeld door beide rondes — één plek, zodat de lichte ronde nooit
+// uit de pas kan lopen met de volledige.
+function mapProductRow(r) {
+  return {id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null};
+}
+function mapHistoryRow(r) {
+  return {id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||'',locationId:r.location_id||null,locationToId:r.location_to_id||null};
+}
+function mapBusStockRow(r) { return {id:r.id,busId:r.bus_id,productId:r.product_id,qty:Number(r.qty)||0}; }
+function mapBusTargetRow(r) { return {id:r.id,busId:r.bus_id,productId:r.product_id,target:Number(r.target_qty)||0}; }
+
 async function loadAll() {
   setSyncing('syncing');
   try {
@@ -817,22 +847,18 @@ async function loadAll() {
     ]);
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
-    db.products   = prods.map(r=>({id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null}));
+    db.products   = prods.map(mapProductRow);
     // Sorteer producten alfabetisch op naam, en binnen dezelfde naam op kleurcode
     // (numeric=true zorgt dat RAL 9010 ná RAL 9001 komt, niet ervoor)
-    db.products.sort((a,b)=>{
-      const nameCmp = a.name.localeCompare(b.name,'nl',{numeric:true,sensitivity:'base'});
-      if(nameCmp!==0) return nameCmp;
-      const ca = (a.color_codes && a.color_codes[0]) || '';
-      const cb = (b.color_codes && b.color_codes[0]) || '';
-      return ca.localeCompare(cb,'nl',{numeric:true,sensitivity:'base'});
-    });
+    sortProductsByNameColor(db.products);
     db.projects   = projs.map(r=>({id:r.id,name:r.name,client:r.client||'',date:r.date||'',status:r.status||'actief'}));
-    db.history    = hist.map(r=>({id:r.id,type:r.type,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty),note:r.note||'',date:r.date||'',employee:r.employee_name||'',color:r.color_code||'',locationId:r.location_id||null,locationToId:r.location_to_id||null}));
+    db.history    = hist.map(mapHistoryRow);
     db.employees  = emps.map(r=>({id:r.id,name:r.name,active:r.active!==false,isOwner:r.is_owner===true}));
     db.buses      = buses.map(r=>({id:r.id,name:r.name,sort:Number(r.sort_order)||0,active:r.active!==false}));
-    db.busStock   = busStock.map(r=>({id:r.id,busId:r.bus_id,productId:r.product_id,qty:Number(r.qty)||0}));
-    db.busTargets = busTargets.map(r=>({id:r.id,busId:r.bus_id,productId:r.product_id,target:Number(r.target_qty)||0}));
+    db.busStock   = busStock.map(mapBusStockRow);
+    db.busTargets = busTargets.map(mapBusTargetRow);
+    lastHistoryId = db.history.reduce((m,h)=>Math.max(m, h.id||0), 0);
+    lastFullLoad  = Date.now();
     setSyncing('ok');
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
@@ -851,9 +877,88 @@ async function loadAll() {
   }
 }
 
-// ====================== REALTIME (polling elke 10 sec) ======================
+// Lichte ronde: voorraadcijfers + alleen de nieuwe history-regels.
+// Categorieën, leveranciers, projecten, medewerkers en bussen komen hier NIET mee —
+// die veranderen zelden en worden door de volledige ronde opgehaald (max 1 min oud).
+// Elke CRUD-actie op die tabellen roept zelf loadAll() aan, dus daar merk je niets van.
+async function loadSync() {
+  if(!lastFullLoad) return loadAll();                                  // nog nooit geladen
+  if(Date.now()-lastFullLoad > FULL_EVERY_MS) return loadAll();        // tijd voor alles
+  setSyncing('syncing');
+  try {
+    const [prods, busStock, busTargets, newHist] = await Promise.all([
+      dbGetAll('products', 'order=name.asc'),
+      dbGetAll('bus_stock', 'order=id.asc'),
+      dbGetAll('bus_targets', 'order=id.asc'),
+      dbGet('history', `id=gt.${lastHistoryId}&order=id.desc&limit=500`),
+    ]);
+    // Achterstand groter dan de limiet? Dan liever één keer alles goed ophalen.
+    if(newHist.length >= 500) return loadAll();
+    db.products   = prods.map(mapProductRow);
+    sortProductsByNameColor(db.products);
+    db.busStock   = busStock.map(mapBusStockRow);
+    db.busTargets = busTargets.map(mapBusTargetRow);
+    if(newHist.length) {
+      // newHist staat op id aflopend en is per definitie nieuwer dan alles in de
+      // cache — vooraan plakken houdt de volgorde (nieuwste eerst) dus intact.
+      const bekend = new Set(db.history.map(h=>h.id));
+      const erbij  = newHist.map(mapHistoryRow).filter(h=>!bekend.has(h.id));
+      if(erbij.length) db.history = erbij.concat(db.history);
+      lastHistoryId = newHist.reduce((m,r)=>Math.max(m, r.id||0), lastHistoryId);
+    }
+    setSyncing('ok');
+    renderPage(currentPage);
+  } catch(e) {
+    console.error('Sync fout:', e);
+    setSyncing('error');
+  }
+}
+
+// ====================== REALTIME (slimme poll — v2.9.6) ======================
+// Elke 5 seconden één piepklein verzoek: wat is het hoogste history-id? Staat dat
+// nog op dezelfde waarde, dan is er niets geboekt en blijft het bij die ene regel.
+// Pas als het verandert volgt de echte ronde. Voorheen ging elke 10 seconden de
+// complete history over de lijn — op 4G duurde die ronde soms langer dan het
+// interval zelf, waardoor verzoeken zich opstapelden en cijfers achterliepen.
+const POLL_MS = 5000;
+let pollBusy = false;
+
+// Niet verversen zolang iemand in een invoerveld staat: renderPage() hertekent de
+// hele lijst en dan verdwijnt het veld onder je vingers vandaan (v2.9.6).
+function isEditing() {
+  const el = document.activeElement;
+  if(!el) return false;
+  return el.tagName==='INPUT' || el.tagName==='TEXTAREA' || el.tagName==='SELECT' || el.isContentEditable===true;
+}
+
+async function pollTick() {
+  if(document.visibilityState!=='visible') return;
+  if(pollBusy || isEditing()) return;
+  pollBusy = true;
+  try {
+    if(Date.now()-lastFullLoad > FULL_EVERY_MS) { await loadAll(); return; }
+    const top = await dbGet('history', 'select=id&order=id.desc&limit=1');
+    const topId = (top && top.length) ? top[0].id : 0;
+    if(topId !== lastHistoryId) await loadSync();
+  } catch(e) {
+    console.error('Poll fout:', e);
+    setSyncing('error');
+  } finally {
+    pollBusy = false;
+  }
+}
+
 function setupRealtime() {
-  setInterval(()=>{ if(document.visibilityState==='visible') loadAll(); }, 10000);
+  setInterval(pollTick, POLL_MS);
+  // iOS bevriest timers zodra het scherm op slot gaat of de app naar de achtergrond
+  // schuift. Zonder deze haken kijk je na het ontgrendelen naar verouderde cijfers
+  // tot de timer weer aanslaat — vandaar meteen verversen bij terugkomst.
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') pollTick(); });
+  window.addEventListener('focus', pollTick);
+  window.addEventListener('pageshow', pollTick);
+  // Klaar met typen in een veld? Even wachten tot de bijbehorende boeking weg is,
+  // dan meteen verversen in plaats van tot de volgende tik wachten.
+  document.addEventListener('focusout', ()=>setTimeout(pollTick, 400));
 }
 
 // ====================== HELPERS ======================
@@ -1183,11 +1288,11 @@ function renderStock() {
           ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
           <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${bq} ${p.unit} in ${locName(activeLocation)} · magazijn: ${p.qty} · €${p.price}</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-            ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
+            ${isOwner?`<button onclick="quickQty(${p.id},-0.25,${activeLocation})" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
             ${isOwner
-              ? `<input type="number" inputmode="decimal" value="${bq}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value)" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
+              ? `<input type="number" inputmode="decimal" value="${bq}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value, ${activeLocation})" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
               : `<div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${bq}</div>`}
-            ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
+            ${isOwner?`<button onclick="quickQty(${p.id},0.25,${activeLocation})" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
           </div>
         </div>`;
       }
@@ -1201,11 +1306,11 @@ function renderStock() {
         ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div onclick="openProductDetail(${p.id})" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.color_codes.map(c=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:2px 7px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</div>`:''}
         <div class="card-sub" onclick="openProductDetail(${p.id})" style="cursor:pointer">${p.qty} ${p.unit} op voorraad${busTotalQty(p.id)?` · 🚐 ${roundQty(busTotalQty(p.id))} in bussen`:''} · min ${p.min} · €${p.price}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-          ${isOwner?`<button onclick="quickQty(${p.id},-0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
+          ${isOwner?`<button onclick="quickQty(${p.id},-0.25,null)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">−</button>`:''}
           ${isOwner
-            ? `<input type="number" inputmode="decimal" value="${p.qty}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value)" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
+            ? `<input type="number" inputmode="decimal" value="${p.qty}" min="0" step="0.125" onfocus="this.select()" onchange="setQty(${p.id}, this.value, null)" style="width:64px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;padding:6px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">`
             : `<div style="font-family:'JetBrains Mono',monospace;font-size:15px;min-width:40px;text-align:center">${p.qty}</div>`}
-          ${isOwner?`<button onclick="quickQty(${p.id},0.25)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
+          ${isOwner?`<button onclick="quickQty(${p.id},0.25,null)" style="width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;flex-shrink:0">+</button>`:''}
           <div class="stock-bar-wrap" style="flex:1;margin-top:0"><div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${barColor(p)}"></div></div></div>
         </div>
       </div>`;
@@ -1363,45 +1468,54 @@ function clearSearch() {
   renderStock();
 }
 
-async function quickQty(id, delta) {
+// De locatie komt sinds v2.9.6 mee vanuit de rij die je aantikt, niet uit de
+// globale activeLocation. Wissel je van locatie-chip terwijl een veld nog focus
+// heeft, dan landt de boeking nog steeds op de bus waar de rij bij hoorde.
+// Zonder derde argument valt hij terug op activeLocation (oud gedrag).
+function rowLocation(loc) { return (loc===undefined ? activeLocation : loc) || null; }
+
+async function quickQty(id, delta, loc) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
-  if(activeLocation) {
+  const target=rowLocation(loc);
+  if(target) {
     // Busweergave: corrigeer de busvoorraad (owner-only knoppen, zoals magazijn)
-    const loc=activeLocation;
-    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===loc);
+    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===target);
     const cur=row?row.qty:0;
     const newQty=Math.max(0, Math.round((cur+delta)*100)/100);
-    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:loc,productId:id,qty:newQty});
+    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:target,productId:id,qty:newQty});
     renderStock();
-    await applyStockDelta(id, loc, delta);
-    await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today(), employee_name:getCurrentEmployee()||null, location_id:loc});
+    await applyStockDelta(id, target, delta);
+    await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Snelle aanpassing ${cur} → ${newQty} (${locName(target)})`, date:today(), employee_name:getCurrentEmployee()||null, location_id:target});
     return;
   }
-  const newQty=Math.max(0, Math.round((p.qty+delta)*100)/100);
+  const cur=p.qty;
+  const newQty=Math.max(0, Math.round((cur+delta)*100)/100);
   p.qty=newQty;
   renderStock();
   await dbPatch('products', `id=eq.${id}`, {qty:newQty});
-  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Snelle aanpassing', date:today(), employee_name:getCurrentEmployee()||null});
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Snelle aanpassing ${cur} → ${newQty} (Magazijn)`, date:today(), employee_name:getCurrentEmployee()||null});
 }
 
 // Directe invoer van een absolute voorraadwaarde (typen i.p.v. +/−).
 // Berekent zelf het verschil en boekt dat als correctie, net als quickQty.
-async function setQty(id, value) {
+// De notitie legt vast wát er stond en wat je ervan maakte, zodat je een telling
+// achteraf kunt terugvinden zonder de hele voorraad te moeten reconstrueren.
+async function setQty(id, value, loc) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
   const newQty=Math.max(0, Math.round((parseFloat(String(value).replace(',','.'))||0)*1000)/1000);
-  const loc=activeLocation||null;
-  const cur=loc?getBusQty(id, loc):p.qty;
+  const target=rowLocation(loc);
+  const cur=target?getBusQty(id, target):p.qty;
   const delta=Math.round((newQty-cur)*1000)/1000;
   if(delta===0) { renderStock(); return; }   // niets veranderd
-  if(loc) {
-    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===loc);
-    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:loc,productId:id,qty:newQty});
+  if(target) {
+    let row=(db.busStock||[]).find(r=>r.productId===id&&r.busId===target);
+    if(row) row.qty=newQty; else db.busStock.push({id:null,busId:target,productId:id,qty:newQty});
   } else {
     p.qty=newQty;
   }
   renderStock();
-  await applyStockDelta(id, loc, delta);
-  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:'Voorraad ingesteld', date:today(), employee_name:getCurrentEmployee()||null, location_id:loc});
+  await applyStockDelta(id, target, delta);
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Voorraad ingesteld ${cur} → ${newQty} (${locName(target)})`, date:today(), employee_name:getCurrentEmployee()||null, location_id:target});
 }
 
 // ====================== PROJECTS ======================
@@ -1541,7 +1655,7 @@ async function markSupOrdered(supId) {
   for(const p of items) {
     await dbPatch('products', `id=eq.${p.id}`, {last_ordered_at:newVal});
   }
-  await loadAll();
+  await loadSync();
 }
 function shareOrCopy(txt,title) {
   if(navigator.share) { navigator.share({title,text:txt}).catch(()=>showExportModal(txt,title)); return; }
@@ -1635,7 +1749,7 @@ async function applyReceive(scope) {
     await dbPatch('products', `id=eq.${id}`, {qty: newQty, last_ordered_at: null});
     await dbPost('history', {type:'order',product_id:id,qty,note:'Bestelling ontvangen',date:today(),employee_name:getCurrentEmployee()||null});
   }
-  await loadAll();
+  await loadSync();
 }
 
 // ====================== PRODUCT CRUD ======================
@@ -2204,7 +2318,7 @@ async function confirmIssue() {
   setSyncing('syncing');
   await applyStockDelta(prodId, loc, issueMode==='out'?-qty:qty);
   await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null,color_code:colorCode,location_id:loc});
-  await loadAll();
+  await loadSync();
 
   // Modal blijft open — reset product, project blijft staan
   const savedProjId = projId;
@@ -2336,7 +2450,7 @@ async function confirmTransfer() {
   await applyStockDelta(prodId, from, -qty);
   await applyStockDelta(prodId, to, qty);
   await dbPost('history', {type:'transfer', product_id:prodId, qty, note, date:today(), employee_name:getCurrentEmployee()||null, location_id:from, location_to_id:to});
-  await loadAll();
+  await loadSync();
 
   // Modal blijft open — bus laden is meestal meerdere producten achter elkaar
   document.getElementById('transfer-product').value='';
@@ -2413,7 +2527,7 @@ async function confirmBusRefill() {
     await dbPost('history', {type:'transfer', product_id:r.product.id, qty:r.aanvullen, note:'Bus aangevuld tot streef', date:today(), employee_name:getCurrentEmployee()||null, location_id:null, location_to_id:busId});
   }
   closeModal('modal-bus-refill');
-  await loadAll();
+  await loadSync();
 }
 
 // ====================== DETAIL MODALS ======================
