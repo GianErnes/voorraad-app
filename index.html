@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voorraad · Ernes Schilders</title>
+
+<!--
+  ══════════════════════════════════════════════════════════════════════
+  DOORSTUURPAGINA, geen app.
+
+  Waarom dit bestand bestaat: in deze repo staat de app onder de naam
+  voorraad-app_2.html. Zonder een index.html geeft het korte adres
+  gianernes.github.io/voorraad-app/ een foutmelding, en moest je de
+  exacte bestandsnaam kennen om erbij te komen. Opruimpunt 4 uit
+  SYSTEEM.md. Gemaakt 2 augustus 2026.
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  LET OP BIJ EEN NIEUWE VERSIE VAN DE APP                         │
+  │                                                                  │
+  │  De bestandsnaam van de app staat hieronder op DRIE plekken:     │
+  │  in de meta-refresh, in het script, en in de gewone link.        │
+  │  Komt er ooit een voorraad-app_3.html, pas ze dan alle drie aan. │
+  │  Vergeet je dat, dan stuurt het korte adres door naar een        │
+  │  bestand dat niet meer bestaat, en dat is erger dan geen         │
+  │  doorstuurpagina: dan lijkt het stuk in plaats van afwezig.      │
+  └──────────────────────────────────────────────────────────────────┘
+
+  Waarom doorsturen en niet de app hernoemen naar index.html: dan breken
+  alle bestaande bladwijzers en snelkoppelingen op de telefoons, en staat
+  de oude naam nog op meerdere plekken in SYSTEEM.md.
+  ══════════════════════════════════════════════════════════════════════
+-->
+
+<!-- 1 van 3: werkt ook zonder JavaScript -->
+<meta http-equiv="refresh" content="0; url=voorraad-app_2.html">
+
+<link rel="canonical" href="voorraad-app_2.html">
+<meta name="robots" content="noindex">
+
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #f4f5f7;
+    color: #1c2430;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .midden {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 24px;
+    box-sizing: border-box;
+    text-align: center;
+  }
+  .titel { font-size: 18px; font-weight: 600; }
+  .uitleg { font-size: 15px; color: #6b7280; }
+  a.knop {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 12px 22px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+  }
+</style>
+</head>
+<body>
+
+<div class="midden">
+  <div class="titel">Voorraad wordt geopend</div>
+  <div class="uitleg">Gebeurt er niets, gebruik dan de knop hieronder.</div>
+  <!-- 2 van 3: de zekere weg als het doorsturen niet aanslaat -->
+  <a class="knop" href="voorraad-app_2.html">Voorraad openen</a>
+</div>
+
+<script>
+  // 3 van 3: replace() en niet href, zodat de terugknop van de browser
+  // niet in een lus terechtkomt tussen deze pagina en de app.
+  window.location.replace('voorraad-app_2.html');
+</script>
+
+</body>
+</html>
