@@ -1,13 +1,12 @@
 
 
 
-
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.6 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.9.7 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-07-24                                        ║
@@ -596,19 +595,17 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.6';
-const BUILD_DATE = '2026-07-24';
+const APP_VERSION = '2.9.7';
+const BUILD_DATE = '2026-08-20';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = false;
+const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — sneller synchroniseren tussen telefoons:<br><br>
-  • De app haalde elke 10 seconden de complete geschiedenis op. Die tabel groeit alleen maar, dus op 4G duurde zo'n ronde soms langer dan de tussenpoos zelf — daardoor zag je een boeking van een collega pas veel later. Nu wordt er elke 5 seconden één piepklein controlevraagje gesteld en pas echt opgehaald als er iets veranderd is.<br><br>
-  • Telefoon uit je zak? De cijfers verversen nu meteen. iOS zet timers stil zodra het scherm op slot gaat; je keek daarna naar de stand van vóór het slotscherm.<br><br>
-  • De lijst wordt niet meer bijgewerkt terwijl je in een invoerveld staat te typen.<br><br>
-  • Bij het aanpassen van een aantal wordt de locatie nu vastgehouden vanaf het moment dat je het veld aantikt. Wisselde je van bus-tab terwijl het veld nog openstond, dan kon de correctie op de verkeerde bus landen.<br><br>
-  • Correcties krijgen een duidelijkere regel in de geschiedenis: "Voorraad ingesteld 11 → 4 (Bus 27)" in plaats van alleen "Voorraad ingesteld".
+  <strong>v${APP_VERSION}</strong> — regie-export:<br><br>
+  • Bij een project staat nu een extra knop <strong>💶 Regie-export</strong>. Die maakt dezelfde materiaallijst als de gewone export, maar met verkoopprijzen: inkoopprijs plus 30%. Handig om zo door te sturen bij regiewerk.<br><br>
+  • Er staan bewust géén inkoopprijzen of marges in die lijst — hij is bedoeld om ongewijzigd naar de klant te kunnen.<br><br>
+  • Voor het exporteren waarschuwt de app als een product op €0,00 staat of als er meer retour is geboekt dan uitgegeven. Dan zie je het nu vooraf in plaats van bij de klant.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -2596,6 +2593,9 @@ function openProjDetail(id) {
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="editProject(${p.id})">✏️ Bewerken</button>
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProject(${p.id})">📤 Exporteer</button>
     </div>
+    <div class="btn-row" style="margin-bottom:12px">
+      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProjectRegie(${p.id})">💶 Regie-export (+${REGIE_OPSLAG_PCT}%)</button>
+    </div>
     <div class="section-hdr">Materiaalverbruik</div>
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
@@ -2619,6 +2619,10 @@ async function reopenProject(id) {
     closeModal('modal-detail'); await loadAll();
   }
 }
+
+// Opslagpercentage voor regie-werk: inkoopprijs + X% = verkoopprijs richting klant.
+// Wil je een ander percentage? Alleen dit getal aanpassen.
+const REGIE_OPSLAG_PCT = 30;
 
 function exportProject(id) {
   const p=db.projects.find(x=>x.id===id); if(!p) return;
@@ -2684,6 +2688,70 @@ function exportProject(id) {
   }
 
   shareOrCopy(txt, `Materiaallijst ${p.name}`);
+}
+
+// ====================== REGIE-EXPORT ======================
+// Zelfde netto-verbruiksberekening als exportProject(), maar met verkoopprijs
+// (inkoop + REGIE_OPSLAG_PCT%). Bewust GEEN inkoopprijzen of marge in de tekst:
+// deze lijst gaat naar de klant.
+function exportProjectRegie(id) {
+  const p=db.projects.find(x=>x.id===id); if(!p) return;
+  const lines=db.history.filter(h=>h.projectId===id);
+  const factor = 1 + (REGIE_OPSLAG_PCT/100);
+
+  const grouped={};
+  lines.forEach(h=>{
+    const pr=db.products.find(x=>x.id===h.productId);
+    if(!pr) return;
+    const key=h.productId;
+    if(!grouped[key]) {
+      const kleur=(Array.isArray(pr.color_codes)&&pr.color_codes.length)?pr.color_codes[0]:'';
+      const label=pr.name+(kleur?' · '+kleur:'');
+      grouped[key]={out:0,ret:0,unit:pr.unit,prijs:Number(pr.price)||0,label};
+    }
+    if(h.type==='out') grouped[key].out += h.qty;
+    else if(h.type==='in') grouped[key].ret += h.qty;
+    // order/transfer met (per ongeluk) een project_id tellen bewust niet mee
+  });
+
+  const verbruikt=[]; let boekfouten=0, geenPrijs=0;
+  Object.values(grouped).forEach(g=>{
+    const netto=roundQty(g.out-g.ret);
+    if(netto>0) {
+      if(g.prijs<=0) geenPrijs++;
+      verbruikt.push({naam:g.label,qty:netto,unit:g.unit,prijs:g.prijs});
+    } else if(netto<0) boekfouten++;
+  });
+
+  if(!verbruikt.length) { alert('Geen netto verbruik op dit project — niets te factureren.'); return; }
+
+  // Failsafes vóór het versturen: liever nu zien dan bij de klant op tafel.
+  const waarschuwing=[];
+  if(boekfouten) waarschuwing.push(`${boekfouten} product(en) hebben méér retour dan uitgegeven (boekfout?).`);
+  if(geenPrijs) waarschuwing.push(`${geenPrijs} product(en) staan op €0,00 — die regels worden gratis gefactureerd.`);
+  if(waarschuwing.length && !confirm('⚠️ Let op:\n\n• '+waarschuwing.join('\n• ')+'\n\nToch een regie-export maken?')) return;
+
+  verbruikt.sort((a,b)=>a.naam.localeCompare(b.naam));
+
+  let txt=`MATERIAAL REGIE – ${p.name}\n`;
+  txt+=`Klant: ${p.client}\nDatum: ${p.date}\n`;
+  txt+=`Verkoopprijzen excl. btw\n`;
+  txt+='─'.repeat(40)+'\n\n';
+
+  let totaal=0;
+  verbruikt.forEach(({naam,qty,unit,prijs})=>{
+    // Eerst de eenheidsprijs afronden, dán vermenigvuldigen: zo klopt elke
+    // regel als de klant 'm zelf natelt (aantal × prijs = regeltotaal).
+    const verkoop=Math.round(prijs*factor*100)/100;
+    const regel=Math.round(qty*verkoop*100)/100;
+    totaal+=regel;
+    txt+=`${naam.padEnd(42)} ${String(roundQty(qty)).padStart(6)} ${unit.padEnd(5)} €${verkoop.toFixed(2).padStart(8)} €${regel.toFixed(2).padStart(9)}\n`;
+  });
+
+  txt+='\n'+'─'.repeat(40)+'\n';
+  txt+=`TOTAAL MATERIAAL (excl. btw): €${totaal.toFixed(2)}\n`;
+
+  shareOrCopy(txt, `Regie materiaal ${p.name}`);
 }
 
 // ====================== CATEGORIES ======================
