@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.8 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.9.9 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-03                                        ║
@@ -154,11 +154,12 @@
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
   input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   select option{background:var(--surface2);}
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
+  .modal-overlay{position:fixed;top:var(--vv-top,0px);left:0;right:0;height:var(--vv-h,100dvh);background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
   .modal-overlay.open{display:flex;}
-  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom) + var(--kb,0px));width:100%;max-height:calc(90dvh - var(--kb,0px));overflow-y:auto;}
-  /* --kb = hoogte van het iOS-toetsenbord (v2.9.8, via visualViewport). Zonder dit schuift het
-     toetsenbord over de onderkant van de modal en zie je het aantal-veld niet tijdens typen. */
+  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:calc(var(--vv-h,100dvh) * .9);overflow-y:auto;}
+  /* --vv-top/--vv-h = positie en hoogte van de ZICHTBARE viewport (v2.9.9, via visualViewport).
+     iOS legt het toetsenbord over de pagina zonder de layout-viewport te verkleinen; door de
+     overlay op de visual viewport te zetten blijft de modal-onderkant boven het toetsenbord. */
   .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
   .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
   .fab{position:fixed;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(230,57,70,.3);z-index:150;transition:transform .15s;}
@@ -597,28 +598,31 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.8';
+const APP_VERSION = '2.9.9';
 const BUILD_DATE = '2026-09-03';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
-// ====================== TOETSENBORD-COMPENSATIE (v2.9.8) ======================
-// iOS Safari legt het toetsenbord OVER de pagina zonder de viewport te verkleinen.
-// Een modal die onderaan vastzit (position:fixed) blijft dus half achter het
-// toetsenbord — scrollIntoView op het aantal-veld heeft dan geen effect.
-// visualViewport meldt wél de zichtbare hoogte; het verschil zetten we in --kb,
-// de modal krijgt daarmee extra bodem-padding en een kleinere max-hoogte,
-// waarna het gefocuste veld alsnog in beeld wordt gescrold.
+// ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
+// iOS Safari legt het toetsenbord OVER de pagina; position:fixed blijft aan de
+// layout-viewport hangen, dus een modal onderaan verdwijnt achter het toetsenbord.
+// visualViewport geeft de echt zichtbare hoogte + offset. Die zetten we in CSS-vars
+// zodat .modal-overlay exact het zichtbare deel beslaat; de modal (align flex-end)
+// eindigt dan op de bovenrand van het toetsenbord en het gefocuste veld wordt
+// daarna in beeld gescrold.
 (function initKeyboardCompensation(){
   const vv = window.visualViewport;
   if(!vv) return;
-  let last = -1;
+  let lastH = -1, lastT = -1;
   function apply(){
-    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-    if(kb === last) return;
-    last = kb;
-    document.documentElement.style.setProperty('--kb', kb + 'px');
+    const h = Math.round(vv.height), t = Math.round(vv.offsetTop);
+    if(h === lastH && t === lastT) return;
+    lastH = h; lastT = t;
+    const root = document.documentElement.style;
+    root.setProperty('--vv-h', h + 'px');
+    root.setProperty('--vv-top', t + 'px');
+    const kbOpen = window.innerHeight - h > 100;
     const el = document.activeElement;
-    if(kb > 0 && el && el.closest && el.closest('.modal') && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+    if(kbOpen && el && el.closest && el.closest('.modal') && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
       setTimeout(()=>el.scrollIntoView({block:'center', behavior:'smooth'}), 50);
     }
   }
