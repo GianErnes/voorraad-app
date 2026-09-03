@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.7 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.9.8 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-07-24                                        ║
+  ║  Laatst gewijzigd: 2026-09-03                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -156,7 +156,9 @@
   select option{background:var(--surface2);}
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
   .modal-overlay.open{display:flex;}
-  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:90dvh;overflow-y:auto;}
+  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom) + var(--kb,0px));width:100%;max-height:calc(90dvh - var(--kb,0px));overflow-y:auto;}
+  /* --kb = hoogte van het iOS-toetsenbord (v2.9.8, via visualViewport). Zonder dit schuift het
+     toetsenbord over de onderkant van de modal en zie je het aantal-veld niet tijdens typen. */
   .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
   .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
   .fab{position:fixed;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(230,57,70,.3);z-index:150;transition:transform .15s;}
@@ -595,17 +597,42 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.7';
-const BUILD_DATE = '2026-08-20';
+const APP_VERSION = '2.9.8';
+const BUILD_DATE = '2026-09-03';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
+
+// ====================== TOETSENBORD-COMPENSATIE (v2.9.8) ======================
+// iOS Safari legt het toetsenbord OVER de pagina zonder de viewport te verkleinen.
+// Een modal die onderaan vastzit (position:fixed) blijft dus half achter het
+// toetsenbord — scrollIntoView op het aantal-veld heeft dan geen effect.
+// visualViewport meldt wél de zichtbare hoogte; het verschil zetten we in --kb,
+// de modal krijgt daarmee extra bodem-padding en een kleinere max-hoogte,
+// waarna het gefocuste veld alsnog in beeld wordt gescrold.
+(function initKeyboardCompensation(){
+  const vv = window.visualViewport;
+  if(!vv) return;
+  let last = -1;
+  function apply(){
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    if(kb === last) return;
+    last = kb;
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+    const el = document.activeElement;
+    if(kb > 0 && el && el.closest && el.closest('.modal') && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+      setTimeout(()=>el.scrollIntoView({block:'center', behavior:'smooth'}), 50);
+    }
+  }
+  vv.addEventListener('resize', apply);
+  vv.addEventListener('scroll', apply);
+  window.addEventListener('focusout', ()=>setTimeout(apply, 100));
+  apply();
+})();
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — regie-export:<br><br>
-  • Bij een project staat nu een extra knop <strong>💶 Regie-export</strong>. Die maakt dezelfde materiaallijst als de gewone export, maar met verkoopprijzen: inkoopprijs plus 30%. Handig om zo door te sturen bij regiewerk.<br><br>
-  • Er staan bewust géén inkoopprijzen of marges in die lijst — hij is bedoeld om ongewijzigd naar de klant te kunnen.<br><br>
-  • Voor het exporteren waarschuwt de app als een product op €0,00 staat of als er meer retour is geboekt dan uitgegeven. Dan zie je het nu vooraf in plaats van bij de klant.
+  <strong>v${APP_VERSION}</strong> — toetsenbord op iPhone:<br><br>
+  • Bij het invullen van een aantal (uitgeven, retour, verplaatsen, ontvangen, correcties) schoof het toetsenbord over het invulveld heen, zodat je niet zag wat je typte. De vensters maken nu ruimte voor het toetsenbord en het veld komt in beeld.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
