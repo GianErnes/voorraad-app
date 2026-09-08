@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.9 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.9.10 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-03                                        ║
@@ -154,6 +154,8 @@
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
   input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   select option{background:var(--surface2);}
+  /* Scanknoppen weg op apparaten zonder aanraakscherm (iMac/desktop) — v2.9.10 */
+  body.no-touch .scan-btn{display:none;}
   .modal-overlay{position:fixed;top:var(--vv-top,0px);left:0;right:0;height:var(--vv-h,100dvh);background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
   .modal-overlay.open{display:flex;}
   .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:calc(var(--vv-h,100dvh) * .9);overflow-y:auto;}
@@ -281,7 +283,7 @@
         <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px;padding-right:36px">
         <button onclick="clearSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
       </div>
-      <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
+      <button class="btn btn-secondary scan-btn" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
     <div class="chip-row" id="loc-filters"></div>
     <div class="chip-row" id="cat-filters" style="margin-top:6px"></div>
@@ -363,7 +365,7 @@
     <div class="form-group"><label>KLEURCODES <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— meerdere mogelijk, gescheiden door komma's. Worden automatisch genormaliseerd (7021 → RAL 7021)</span></label><input id="p-color-codes" placeholder="bv. RAL 7021, RAL 9010"></div>
     <div class="form-group"><label>BARCODE (optioneel)</label>
       <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
-      <button class="btn btn-secondary" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
+      <button class="btn btn-secondary scan-btn" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
     </div>
     <div class="form-group"><label>CATEGORIE</label><select id="p-cat"></select></div>
     <div class="form-group"><label>EENHEID</label>
@@ -450,7 +452,7 @@
       <select id="issue-location" onchange="onIssueLocationChange()"></select>
     </div>
     <div class="form-group" id="issue-product-group">
-      <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
+      <button class="btn btn-secondary btn-full scan-btn" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
       <label>PRODUCT</label>
       <div style="position:relative;margin-bottom:8px">
         <input id="issue-search" placeholder="🔍 Zoek product…" oninput="filterIssueProducts()" style="padding-right:32px">
@@ -563,7 +565,7 @@
 </div>
 <!-- SCANNER MODAL -->
 <div class="modal-overlay" id="modal-scanner" style="align-items:center;justify-content:center">
-  <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px">
+  <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px;max-width:420px">
     <div class="modal-title">Scan barcode<span class="modal-close" onclick="stopScan()">×</span></div>
     <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;width:100%;aspect-ratio:1">
       <video id="scan-video" style="width:100%;height:100%;object-fit:cover" playsinline autoplay muted></video>
@@ -598,8 +600,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.9';
-const BUILD_DATE = '2026-09-03';
+const APP_VERSION = '2.9.10';
+const BUILD_DATE = '2026-09-08';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -635,8 +637,9 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — toetsenbord op iPhone:<br><br>
-  • Bij het invullen van een aantal (uitgeven, retour, verplaatsen, ontvangen, correcties) schoof het toetsenbord over het invulveld heen, zodat je niet zag wat je typte. De vensters maken nu ruimte voor het toetsenbord en het veld komt in beeld.
+  <strong>v${APP_VERSION}</strong> — scanner op de iMac:<br><br>
+  • Op apparaten zonder aanraakscherm (iMac/desktop) zijn de 📷 Scan-knoppen verborgen. Het scanvenster werd daar schermvullend en de ✕ verdween buiten beeld, waardoor je vast leek te zitten. Op telefoon en iPad verandert er niets.<br><br>
+  • Terugval: zou het venster tóch openen, dan is het nu maximaal 420 px breed, zodat de ✕ altijd zichtbaar is en klikken ernaast het sluit. Escape werkt ook nog.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -3295,6 +3298,9 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 // Enter-toets in owner-pin input
 const ownerPinInput=document.getElementById('owner-pin-input');
 if(ownerPinInput) ownerPinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmOwnerPin(); });
+// Geen aanraakscherm (iMac/desktop) → scanknoppen verbergen (v2.9.10).
+// Detectie op touch-punten, niet op schermbreedte: een iPad houdt zo gewoon zijn scanknop.
+if(!(navigator.maxTouchPoints>0 || 'ontouchstart' in window)) document.body.classList.add('no-touch');
 // Scanner altijd te verlaten op desktop: ESC of klik naast het venster (v2.9.3)
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'&&document.getElementById('modal-scanner').classList.contains('open')) stopScan();
