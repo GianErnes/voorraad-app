@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.9.9 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.9.7 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-09-03                                        ║
+  ║  Laatst gewijzigd: 2026-07-24                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -154,12 +154,11 @@
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
   input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   select option{background:var(--surface2);}
-  .modal-overlay{position:fixed;top:var(--vv-top,0px);left:0;right:0;height:var(--vv-h,100dvh);background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
+  /* Scanknoppen weg op apparaten zonder aanraakscherm (iMac/desktop) — v2.9.7 */
+  body.no-touch .scan-btn{display:none;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:flex-end;}
   .modal-overlay.open{display:flex;}
-  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:calc(var(--vv-h,100dvh) * .9);overflow-y:auto;}
-  /* --vv-top/--vv-h = positie en hoogte van de ZICHTBARE viewport (v2.9.9, via visualViewport).
-     iOS legt het toetsenbord over de pagina zonder de layout-viewport te verkleinen; door de
-     overlay op de visual viewport te zetten blijft de modal-onderkant boven het toetsenbord. */
+  .modal{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:90dvh;overflow-y:auto;}
   .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
   .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
   .fab{position:fixed;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(230,57,70,.3);z-index:150;transition:transform .15s;}
@@ -281,7 +280,7 @@
         <input id="stock-search" placeholder="🔍 Zoek product…" oninput="renderStock()" style="padding-left:14px;padding-right:36px">
         <button onclick="clearSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
       </div>
-      <button class="btn btn-secondary" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
+      <button class="btn btn-secondary scan-btn" onclick="startScan('stock')" style="padding:10px 14px;white-space:nowrap">📷 Scan</button>
     </div>
     <div class="chip-row" id="loc-filters"></div>
     <div class="chip-row" id="cat-filters" style="margin-top:6px"></div>
@@ -363,7 +362,7 @@
     <div class="form-group"><label>KLEURCODES <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— meerdere mogelijk, gescheiden door komma's. Worden automatisch genormaliseerd (7021 → RAL 7021)</span></label><input id="p-color-codes" placeholder="bv. RAL 7021, RAL 9010"></div>
     <div class="form-group"><label>BARCODE (optioneel)</label>
       <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
-      <button class="btn btn-secondary" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
+      <button class="btn btn-secondary scan-btn" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
     </div>
     <div class="form-group"><label>CATEGORIE</label><select id="p-cat"></select></div>
     <div class="form-group"><label>EENHEID</label>
@@ -450,7 +449,7 @@
       <select id="issue-location" onchange="onIssueLocationChange()"></select>
     </div>
     <div class="form-group" id="issue-product-group">
-      <button class="btn btn-secondary btn-full" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
+      <button class="btn btn-secondary btn-full scan-btn" onclick="startScan('issue')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
       <label>PRODUCT</label>
       <div style="position:relative;margin-bottom:8px">
         <input id="issue-search" placeholder="🔍 Zoek product…" oninput="filterIssueProducts()" style="padding-right:32px">
@@ -563,7 +562,7 @@
 </div>
 <!-- SCANNER MODAL -->
 <div class="modal-overlay" id="modal-scanner" style="align-items:center;justify-content:center">
-  <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px">
+  <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px;max-width:420px">
     <div class="modal-title">Scan barcode<span class="modal-close" onclick="stopScan()">×</span></div>
     <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;width:100%;aspect-ratio:1">
       <video id="scan-video" style="width:100%;height:100%;object-fit:cover" playsinline autoplay muted></video>
@@ -598,45 +597,16 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.9.9';
-const BUILD_DATE = '2026-09-03';
+const APP_VERSION = '2.9.7';
+const BUILD_DATE = '2026-09-08';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
-
-// ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
-// iOS Safari legt het toetsenbord OVER de pagina; position:fixed blijft aan de
-// layout-viewport hangen, dus een modal onderaan verdwijnt achter het toetsenbord.
-// visualViewport geeft de echt zichtbare hoogte + offset. Die zetten we in CSS-vars
-// zodat .modal-overlay exact het zichtbare deel beslaat; de modal (align flex-end)
-// eindigt dan op de bovenrand van het toetsenbord en het gefocuste veld wordt
-// daarna in beeld gescrold.
-(function initKeyboardCompensation(){
-  const vv = window.visualViewport;
-  if(!vv) return;
-  let lastH = -1, lastT = -1;
-  function apply(){
-    const h = Math.round(vv.height), t = Math.round(vv.offsetTop);
-    if(h === lastH && t === lastT) return;
-    lastH = h; lastT = t;
-    const root = document.documentElement.style;
-    root.setProperty('--vv-h', h + 'px');
-    root.setProperty('--vv-top', t + 'px');
-    const kbOpen = window.innerHeight - h > 100;
-    const el = document.activeElement;
-    if(kbOpen && el && el.closest && el.closest('.modal') && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
-      setTimeout(()=>el.scrollIntoView({block:'center', behavior:'smooth'}), 50);
-    }
-  }
-  vv.addEventListener('resize', apply);
-  vv.addEventListener('scroll', apply);
-  window.addEventListener('focusout', ()=>setTimeout(apply, 100));
-  apply();
-})();
 // Op true: welkomstkaart verschijnt automatisch op dashboard bij nieuwe versie.
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
-const CHANGELOG_PUBLIC = true;
+const CHANGELOG_PUBLIC = false;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — toetsenbord op iPhone:<br><br>
-  • Bij het invullen van een aantal (uitgeven, retour, verplaatsen, ontvangen, correcties) schoof het toetsenbord over het invulveld heen, zodat je niet zag wat je typte. De vensters maken nu ruimte voor het toetsenbord en het veld komt in beeld.
+  <strong>v${APP_VERSION}</strong> — scanner op de iMac:<br><br>
+  • Op apparaten zonder aanraakscherm (iMac/desktop) zijn de 📷 Scan-knoppen verborgen. Het scanvenster werd daar schermvullend en de ✕ verdween buiten beeld, waardoor je vast leek te zitten. Op telefoon en iPad verandert er niets.<br><br>
+  • Terugval: zou het venster tóch openen, dan is het nu maximaal 420 px breed, zodat de ✕ altijd zichtbaar is en klikken ernaast het sluit. Escape werkt ook nog.
 `;
 // ====================== SUPABASE ======================
 // ====================== PINCODE BEVEILIGING ======================
@@ -2624,9 +2594,6 @@ function openProjDetail(id) {
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="editProject(${p.id})">✏️ Bewerken</button>
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProject(${p.id})">📤 Exporteer</button>
     </div>
-    <div class="btn-row" style="margin-bottom:12px">
-      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="exportProjectRegie(${p.id})">💶 Regie-export (+${REGIE_OPSLAG_PCT}%)</button>
-    </div>
     <div class="section-hdr">Materiaalverbruik</div>
     ${lines.length?lines.map(h=>{
       const pr=db.products.find(x=>x.id===h.productId);
@@ -2650,10 +2617,6 @@ async function reopenProject(id) {
     closeModal('modal-detail'); await loadAll();
   }
 }
-
-// Opslagpercentage voor regie-werk: inkoopprijs + X% = verkoopprijs richting klant.
-// Wil je een ander percentage? Alleen dit getal aanpassen.
-const REGIE_OPSLAG_PCT = 30;
 
 function exportProject(id) {
   const p=db.projects.find(x=>x.id===id); if(!p) return;
@@ -2719,70 +2682,6 @@ function exportProject(id) {
   }
 
   shareOrCopy(txt, `Materiaallijst ${p.name}`);
-}
-
-// ====================== REGIE-EXPORT ======================
-// Zelfde netto-verbruiksberekening als exportProject(), maar met verkoopprijs
-// (inkoop + REGIE_OPSLAG_PCT%). Bewust GEEN inkoopprijzen of marge in de tekst:
-// deze lijst gaat naar de klant.
-function exportProjectRegie(id) {
-  const p=db.projects.find(x=>x.id===id); if(!p) return;
-  const lines=db.history.filter(h=>h.projectId===id);
-  const factor = 1 + (REGIE_OPSLAG_PCT/100);
-
-  const grouped={};
-  lines.forEach(h=>{
-    const pr=db.products.find(x=>x.id===h.productId);
-    if(!pr) return;
-    const key=h.productId;
-    if(!grouped[key]) {
-      const kleur=(Array.isArray(pr.color_codes)&&pr.color_codes.length)?pr.color_codes[0]:'';
-      const label=pr.name+(kleur?' · '+kleur:'');
-      grouped[key]={out:0,ret:0,unit:pr.unit,prijs:Number(pr.price)||0,label};
-    }
-    if(h.type==='out') grouped[key].out += h.qty;
-    else if(h.type==='in') grouped[key].ret += h.qty;
-    // order/transfer met (per ongeluk) een project_id tellen bewust niet mee
-  });
-
-  const verbruikt=[]; let boekfouten=0, geenPrijs=0;
-  Object.values(grouped).forEach(g=>{
-    const netto=roundQty(g.out-g.ret);
-    if(netto>0) {
-      if(g.prijs<=0) geenPrijs++;
-      verbruikt.push({naam:g.label,qty:netto,unit:g.unit,prijs:g.prijs});
-    } else if(netto<0) boekfouten++;
-  });
-
-  if(!verbruikt.length) { alert('Geen netto verbruik op dit project — niets te factureren.'); return; }
-
-  // Failsafes vóór het versturen: liever nu zien dan bij de klant op tafel.
-  const waarschuwing=[];
-  if(boekfouten) waarschuwing.push(`${boekfouten} product(en) hebben méér retour dan uitgegeven (boekfout?).`);
-  if(geenPrijs) waarschuwing.push(`${geenPrijs} product(en) staan op €0,00 — die regels worden gratis gefactureerd.`);
-  if(waarschuwing.length && !confirm('⚠️ Let op:\n\n• '+waarschuwing.join('\n• ')+'\n\nToch een regie-export maken?')) return;
-
-  verbruikt.sort((a,b)=>a.naam.localeCompare(b.naam));
-
-  let txt=`MATERIAAL REGIE – ${p.name}\n`;
-  txt+=`Klant: ${p.client}\nDatum: ${p.date}\n`;
-  txt+=`Verkoopprijzen excl. btw\n`;
-  txt+='─'.repeat(40)+'\n\n';
-
-  let totaal=0;
-  verbruikt.forEach(({naam,qty,unit,prijs})=>{
-    // Eerst de eenheidsprijs afronden, dán vermenigvuldigen: zo klopt elke
-    // regel als de klant 'm zelf natelt (aantal × prijs = regeltotaal).
-    const verkoop=Math.round(prijs*factor*100)/100;
-    const regel=Math.round(qty*verkoop*100)/100;
-    totaal+=regel;
-    txt+=`${naam.padEnd(42)} ${String(roundQty(qty)).padStart(6)} ${unit.padEnd(5)} €${verkoop.toFixed(2).padStart(8)} €${regel.toFixed(2).padStart(9)}\n`;
-  });
-
-  txt+='\n'+'─'.repeat(40)+'\n';
-  txt+=`TOTAAL MATERIAAL (excl. btw): €${totaal.toFixed(2)}\n`;
-
-  shareOrCopy(txt, `Regie materiaal ${p.name}`);
 }
 
 // ====================== CATEGORIES ======================
@@ -3295,6 +3194,9 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 // Enter-toets in owner-pin input
 const ownerPinInput=document.getElementById('owner-pin-input');
 if(ownerPinInput) ownerPinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmOwnerPin(); });
+// Geen aanraakscherm (iMac/desktop) → scanknoppen verbergen (v2.9.7).
+// Detectie op touch-punten, niet op schermbreedte: een iPad houdt zo gewoon zijn scanknop.
+if(!(navigator.maxTouchPoints>0 || 'ontouchstart' in window)) document.body.classList.add('no-touch');
 // Scanner altijd te verlaten op desktop: ESC of klik naast het venster (v2.9.3)
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'&&document.getElementById('modal-scanner').classList.contains('open')) stopScan();
