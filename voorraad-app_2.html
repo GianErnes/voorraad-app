@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.10.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.10.1 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-13                                        ║
@@ -77,7 +77,10 @@
   ║    └─ basisproduct + nieuwe kleur → nieuw product (qty 0, min 0)     ║
   ║    └─ products.ordered_qty / ordered_project_id / last_ordered_at    ║
   ║    └─ needsOrder(p) = qty<min OF ordered_qty>0 (alle bestellijsten)  ║
-  ║    └─ bij ontvangst → automatisch op klaarzetlijst van het project   ║
+  ║    └─ bij ontvangst keuze per regel: direct op project geladen       ║
+  ║       (standaard) of naar magazijn/klaarzetlijst  (v2.10.1)          ║
+  ║    └─ iedereen mag losse bestellingen ontvangen; reguliere = eigenaar║
+  ║       receivableItems() filtert per rol                (v2.10.1)     ║
   ║  • Klaarzetten om te laden (v2.10.0)                                 ║
   ║    └─ tabel staged_items (status open/loaded)                        ║
   ║    └─ uitgeef-venster: keuze "Nu uitgeven" / "Klaarzetten" (eigenaar)║
@@ -638,7 +641,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.10.1';
 const BUILD_DATE = '2026-09-13';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -676,7 +679,8 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
   <strong>v${APP_VERSION}</strong> — losse bestellingen en klaarzetten:<br><br>
-  • <strong>Losse bestelling</strong> (bestellen-tab, eigenaar): kies een bestaand product, een nieuwe kleur, aantal en project. De app maakt het product aan en zet het direct als "besteld" onder de leverancier. Bij afhalen tik je "Ontvangen" en het staat meteen klaar om te laden voor dat project.<br><br>
+  • <strong>Losse bestelling</strong> (bestellen-tab, eigenaar): kies een bestaand product, een nieuwe kleur, aantal en project. De app maakt het product aan en zet het direct als "besteld" onder de leverancier.<br><br>
+  • <strong>Afhalen</strong>: iedereen kan een losse bestelling als ontvangen markeren (reguliere bestellingen blijven voor eigenaren). Per regel kies je: <em>direct op project geladen</em> (standaard — je rijdt van de grossier naar de klus) of <em>naar magazijn / klaarzetten</em>.<br><br>
   • <strong>Klaarzetten</strong> (uitgeef-venster, eigenaar): kies bovenin "Klaarzetten" in plaats van "Nu uitgeven". Het materiaal komt op de vinklijst van het project (dashboard en project-detail). Wie het laadt, past eventueel het aantal aan en tikt "Geladen" — pas dan gaat het van de voorraad af en staat het op het project geboekt.
 `;
 // ====================== SUPABASE ======================
@@ -1664,6 +1668,8 @@ function renderOrders() {
   const d=new Date();
   document.getElementById('order-week').textContent=`${getWeek(d)}, ${d.getFullYear()}`;
   const looseBtn=document.getElementById('btn-loose-order'); if(looseBtn) looseBtn.style.display=isCurrentUserOwner()?'':'none';
+  const recvAllBtn=document.querySelector('#page-orders button[onclick="openReceiveAllModal()"]');
+  if(recvAllBtn) recvAllBtn.style.display=receivableItems(db.products.filter(needsOrder)).length?'':'none';
   const needed=db.products.filter(needsOrder);
   const container=document.getElementById('order-by-supplier');
   if(!needed.length) { container.innerHTML='<div class="empty">✅ Niets te bestellen</div>'; }
@@ -1695,7 +1701,8 @@ function renderOrders() {
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="exportSupOrder(${s.id})">📤 Exporteer</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:7px 12px" onclick="waSupOrder(${s.id})">💬 WhatsApp</button>
           ${isCurrentUserOwner()?`${regular.length?`<button class="btn ${allOrdered?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:7px 12px" onclick="markSupOrdered(${s.id})">${allOrdered?'↩️ Reset':'✓ Markeer besteld'}</button>`:''}
-          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>`:''}
+          <button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Ontvangen</button>`
+          :(items.some(isLooseOrder)?`<button class="btn btn-green" style="font-size:12px;padding:7px 12px" onclick="openReceiveSupModal(${s.id})">📦 Afgehaald</button>`:'')}
           <a href="tel:${s.phone}" class="btn btn-secondary" style="font-size:12px;padding:7px 12px">📞 Bel</a>
         </div>
       </div>`;
@@ -1802,9 +1809,11 @@ function copyExportText() {
 }
 
 // ====================== RECEIVE ======================
+// Wie mag wat ontvangen: eigenaren alles, medewerkers alleen losse projectbestellingen (v2.10.1)
+function receivableItems(items) { return isCurrentUserOwner() ? items : items.filter(isLooseOrder); }
 function openReceiveSupModal(supId) {
   const s=db.suppliers.find(x=>x.id===supId);
-  const items=db.products.filter(p=>needsOrder(p)&&p.supplier===supId);
+  const items=receivableItems(db.products.filter(p=>needsOrder(p)&&p.supplier===supId));
   if(!items.length) { alert('Geen producten te ontvangen.'); return; }
   document.getElementById('recv-sup-title').textContent=`Ontvangen – ${s.name}`;
   document.getElementById('recv-sup-list').innerHTML=recvRows(items);
@@ -1814,7 +1823,7 @@ async function confirmReceiveSup() {
   await applyReceive('#recv-sup-list'); closeModal('modal-receive-sup');
 }
 function openReceiveAllModal() {
-  const items=db.products.filter(needsOrder);
+  const items=receivableItems(db.products.filter(needsOrder));
   if(!items.length) { alert('Geen producten te ontvangen.'); return; }
   document.getElementById('recv-all-list').innerHTML=recvRows(items,true);
   openModal('modal-receive-all');
@@ -1826,10 +1835,14 @@ function recvRows(items,showSupplier=false) {
   return items.map(p=>{
     const suggest=orderQty(p);
     return `<div class="recv-row" data-row-id="${p.id}">
-      <div style="flex:1">
+      <div style="flex:1;min-width:0">
         <div style="font-weight:500;font-size:14px" class="recv-name">${p.name}</div>
         ${(Array.isArray(p.color_codes)&&p.color_codes.length)?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent)">${p.color_codes.join(', ')}</div>`:''}
-        <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}${isLooseOrder(p)?`📁 → klaarzetten voor <strong>${orderedProjectName(p)}</strong>`:`Nu: ${p.qty} ${p.unit} · Min: ${p.min}`}</div>
+        <div class="card-sub">${showSupplier?supplierName(p.supplier)+' · ':''}${isLooseOrder(p)?`📁 voor <strong>${orderedProjectName(p)}</strong>`:`Nu: ${p.qty} ${p.unit} · Min: ${p.min}`}</div>
+        ${isLooseOrder(p)&&p.ordered_project_id?`<select class="recv-dest" data-id="${p.id}" style="margin-top:6px;font-size:12px;padding:6px 8px;width:auto;max-width:100%">
+          <option value="loaded" selected>🚐 Direct op project</option>
+          <option value="staged">🏠 Naar magazijn</option>
+        </select>`:''}
       </div>
       <div class="stepper">
         <button onclick="adjustRecv(this,-1)">−</button>
@@ -1869,17 +1882,31 @@ async function applyReceive(scope) {
     const id=parseInt(inp.dataset.id), qty=Math.round((parseFloat(inp.value)||0)*1000)/1000;
     if(qty<=0) continue;
     const p=db.products.find(x=>x.id===id); if(!p) continue;
-    const newQty=Math.round((p.qty+qty)*1000)/1000;
-    const patch={qty: newQty, last_ordered_at: null};
     const loose=isLooseOrder(p);
+    if(loose && !isCurrentUserOwner() && !getCurrentEmployee()) { alert('Kies eerst wie je bent (👤 rechtsboven).'); continue; }
+    // Bestemming losse bestelling (v2.10.1): 'loaded' = direct op project (order + out, voorraad netto gelijk),
+    // 'staged' = magazijn + klaarzetlijst. Zonder geldig project altijd naar magazijn.
+    const destEl=document.querySelector(`${scope} .recv-dest[data-id="${id}"]`);
+    const projOk=loose && p.ordered_project_id && db.projects.some(x=>x.id===p.ordered_project_id);
+    const dest=(projOk && destEl && destEl.value==='loaded') ? 'loaded' : 'staged';
+    const newQty=Math.round((p.qty+qty)*1000)/1000;
+    const patch={qty: dest==='loaded' ? p.qty : newQty, last_ordered_at: null};
     if(loose) { patch.ordered_qty=0; patch.ordered_project_id=null; }
     await dbPatch('products', `id=eq.${id}`, patch);
     await dbPost('history', {type:'order',product_id:id,qty,note:loose?`Losse bestelling ontvangen (${orderedProjectName(p)})`:'Bestelling ontvangen',date:today(),employee_name:getCurrentEmployee()||null});
-    // Losse projectbestelling: direct op de klaarzetlijst van het project (v2.10.0).
+    if(dest==='loaded') {
+      try {
+        await dbPost('history', {type:'out',product_id:id,project_id:p.ordered_project_id,qty,note:'Afgehaald bij leverancier, direct op project',date:today(),employee_name:getCurrentEmployee()||null,color_code:(Array.isArray(p.color_codes)&&p.color_codes[0])||null,location_id:null});
+      } catch(e) {
+        // Uitgifte mislukt → dan ligt het toch in het magazijn: voorraad alsnog ophogen
+        console.error('Direct boeken op project mislukt:', e);
+        await dbPatch('products', `id=eq.${id}`, {qty:newQty}).catch(()=>{});
+        alert(`Ontvangst geboekt, maar op project zetten mislukte (${e.message||e}). Het staat nu in het magazijn; geef het handmatig uit.`);
+      }
+    }
     // Ontvangen aantal is leidend (niet het bestelde), want dat is wat er echt ligt.
-    if(loose && p.ordered_project_id) {
-      const projOk=db.projects.some(x=>x.id===p.ordered_project_id);
-      if(projOk) {
+    if(loose && dest==='staged' && projOk) {
+      {
         try {
           await dbPost('staged_items', {product_id:id,project_id:p.ordered_project_id,qty,location_id:null,color_code:(Array.isArray(p.color_codes)&&p.color_codes[0])||null,note:'Uit losse bestelling',created_by:getCurrentEmployee()||null,status:'open'});
         } catch(e) {
