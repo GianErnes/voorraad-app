@@ -89,6 +89,16 @@
   ║    └─ project-detail + dashboard: vinklijst, aantal aanpasbaar       ║
   ║    └─ afvinken = applyStockDelta + history 'out' op project          ║
   ║    └─ voorraad daalt pas bij afvinken; lijst toont "klaargezet"      ║
+  ║  • Dubbel-tik en gelijktijdig boeken (v2.11.0)                       ║
+  ║    └─ runOnce(): knop grijs + "Bezig…" tijdens boeking; extra tikken ║
+  ║       genegeerd tot de boeking én de sync klaar zijn                 ║
+  ║    └─ fout tijdens boeken → melding + knop weer vrij (try/finally)   ║
+  ║    └─ applyStockDelta via DB-functie apply_stock_delta (RPC):        ║
+  ║       lezen+optellen+schrijven in één stap, rij-slot in Postgres     ║
+  ║       → twee telefoons tegelijk overschrijven elkaar niet meer       ║
+  ║    └─ terugval: RPC ontbreekt (404) → oude lees/schrijf-route +      ║
+  ║       ⚠️ in versietag, zodat de eigenaar de SQL-migratie ziet        ║
+  ║    └─ quickQty magazijn nu ook via applyStockDelta (was dbPatch)     ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -158,6 +168,8 @@
   .stock-bar-bg{height:5px;background:var(--border);border-radius:10px;overflow:hidden;}
   .stock-bar-fill{height:100%;border-radius:10px;transition:width .4s;}
   .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:opacity .15s,transform .1s;text-decoration:none;}
+  /* v2.11.0: knop is bezig met een boeking — zichtbaar geblokkeerd */
+  .btn:disabled,.btn.busy{opacity:.5;cursor:not-allowed;pointer-events:none;transform:none;}
   .btn:active{transform:scale(.97);opacity:.85;}
   .btn-primary{background:var(--accent);color:#fff;font-weight:500;}
   .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);}
@@ -456,7 +468,7 @@
     <div id="hist-edit-meta" style="font-size:11px;color:var(--muted);margin-bottom:14px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-danger" onclick="deleteHistoryEntry()" style="margin-top:0">🗑️ Verwijder</button>
-      <button class="btn btn-primary" onclick="saveHistoryEdit()" style="margin-top:0;flex:1">Opslaan</button>
+      <button class="btn btn-primary" id="hist-save-btn" onclick="saveHistoryEdit()" style="margin-top:0;flex:1">Opslaan</button>
     </div>
   </div>
 </div>
@@ -517,7 +529,7 @@
     <div class="form-group"><label>KLEURCODE</label><input id="lo-color" placeholder="bv. 7016 of RAL 7016" oninput="updateLoosePreview()"></div>
     <div class="form-group"><label>AANTAL</label><input id="lo-qty" type="number" inputmode="decimal" min="0.125" step="0.125" placeholder="bv. 2"></div>
     <div id="lo-preview" style="font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px"></div>
-    <button class="btn btn-primary btn-full" onclick="confirmLooseOrder()">Op bestellijst zetten</button>
+    <button class="btn btn-primary btn-full" id="lo-confirm-btn" onclick="confirmLooseOrder()">Op bestellijst zetten</button>
   </div>
 </div>
 <!-- TRANSFER (VERPLAATSEN) -->
@@ -569,7 +581,7 @@
     <div class="modal-title"><span id="recv-sup-title">Ontvangen</span><span class="modal-close" onclick="closeModal('modal-receive-sup')">×</span></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Pas aantallen aan en bevestig ontvangst.</p>
     <div id="recv-sup-list"></div>
-    <button class="btn btn-green btn-full" onclick="confirmReceiveSup()">✅ Voorraad bijwerken</button>
+    <button class="btn btn-green btn-full" id="recv-sup-btn" onclick="confirmReceiveSup()">✅ Voorraad bijwerken</button>
   </div>
 </div>
 <!-- RECEIVE ALL -->
@@ -578,7 +590,7 @@
     <div class="modal-title">Alle bestellingen ontvangen<span class="modal-close" onclick="closeModal('modal-receive-all')">×</span></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Alle producten onder minimumvoorraad.</p>
     <div id="recv-all-list"></div>
-    <button class="btn btn-green btn-full" onclick="confirmReceiveAll()">✅ Voorraad bijwerken</button>
+    <button class="btn btn-green btn-full" id="recv-all-btn" onclick="confirmReceiveAll()">✅ Voorraad bijwerken</button>
   </div>
 </div>
 <!-- ADD/EDIT SUPPLIER -->
@@ -643,8 +655,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.10.2';
-const BUILD_DATE = '2026-09-13';
+const APP_VERSION = '2.11.0';
+const BUILD_DATE = '2026-09-15';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -680,7 +692,11 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — losse bestellingen en klaarzetten:<br><br>
+  <strong>v${APP_VERSION}</strong> — geen dubbele boekingen meer:<br><br>
+  • <strong>Knop blokkeert tijdens boeken</strong>: na een tik op Uitgeven, Retourneren, Verplaatsen, Bus aanvullen, Ontvangen of Geladen wordt de knop grijs met "Bezig…" tot de boeking klaar is. Extra tikken doen niets meer. Voorheen werd elke tik een aparte boeking.<br><br>
+  • <strong>Twee telefoons tegelijk</strong>: de voorraad wordt nu in één stap in de database opgeteld of afgetrokken. Boeken Bjorn en Max exact tegelijk hetzelfde product, dan tellen beide boekingen mee.<br><br>
+  • <strong>Fout tijdens boeken</strong>: je krijgt een melding en de knop komt weer vrij, in plaats van dat de app stil blijft hangen.<br><br>
+  <em>Eerder (v2.10):</em><br>
   • <strong>Losse bestelling</strong> (bestellen-tab, eigenaar): kies een bestaand product, een nieuwe kleur, aantal en project. De app maakt het product aan en zet het direct als "besteld" onder de leverancier.<br><br>
   • <strong>Keuzelijst basisproduct</strong>: alleen nog naam en leverancier. Producten met een oude naam waar de kleurcode nog in staat krijgen een ⚠️, zodat je die kleur niet per ongeluk meeneemt.<br><br>
   • <strong>Afhalen</strong>: iedereen kan een losse bestelling als ontvangen markeren (reguliere bestellingen blijven voor eigenaren). Per regel kies je: <em>direct op project geladen</em> (standaard — je rijdt van de grossier naar de klus) of <em>naar magazijn / klaarzetten</em>.<br><br>
@@ -873,6 +889,47 @@ async function dbDelete(table, match) {
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Prefer': 'return=minimal' }
   });
   if(!r.ok) throw new Error(`DELETE ${table}: ${r.status} ${await r.text()}`);
+}
+// Databasefunctie aanroepen (PostgREST RPC). Geeft de Response terug zodat de
+// aanroeper zelf op status kan reageren (404 = functie bestaat nog niet).
+async function dbRpc(fn, args) {
+  return fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args)
+  });
+}
+
+// ====================== DUBBEL-TIK BLOKKADE (v2.11.0) ======================
+// Eén boeking doet 3–5 netwerkronden na elkaar; op een telefoon voelt dat als
+// "hij doet niets" en dan tik je nog een keer. Voorheen werd elke tik een
+// aparte, volledige boeking (de voorraadcheck kijkt in het lokale geheugen dat
+// nog niet bijgewerkt is). runOnce() laat per sleutel maar één boeking tegelijk
+// lopen, zet de knop zichtbaar op "Bezig…" en geeft hem in alle gevallen weer vrij.
+const BUSY_LABEL='⏳ Bezig…';
+const _busyKeys=new Set();
+async function runOnce(key, btn, fn) {
+  if(_busyKeys.has(key)) return false;            // al bezig → tik negeren
+  _busyKeys.add(key);
+  const label=btn?btn.textContent:null;
+  if(btn) { btn.disabled=true; btn.classList.add('busy'); btn.textContent=BUSY_LABEL; }
+  try {
+    await fn();
+    return true;
+  } catch(e) {
+    console.error('Boeking mislukt ('+key+'):', e);
+    setSyncing('error');
+    alert('Boeken mislukt: '+(e.message||e)+'\n\nEr is mogelijk niets of maar de helft geboekt. Controleer de voorraad en het logboek en probeer opnieuw.');
+    try { await loadSync(); } catch(_) {}
+    return false;
+  } finally {
+    _busyKeys.delete(key);
+    if(btn) {
+      btn.disabled=false; btn.classList.remove('busy');
+      // Alleen terugzetten als de functie zelf de tekst niet al veranderd heeft
+      if(btn.textContent===BUSY_LABEL) btn.textContent=label;
+    }
+  }
 }
 
 // ====================== LOCAL STATE ======================
@@ -1125,7 +1182,24 @@ function locationOptions(selectedId, onlyActive=true) {
 // Centrale voorraad-mutator: schrijft delta naar magazijn (products.qty) of bus (bus_stock).
 // Leest altijd de VERSE waarde uit de DB zodat opeenvolgende mutaties op hetzelfde
 // product/dezelfde locatie (zoals bij history-correcties) correct stapelen.
+// Voorraadmutatie. Sinds v2.11.0 via DB-functie apply_stock_delta: Postgres doet
+// lezen+optellen+schrijven in één stap met een rij-slot, zodat twee apparaten die
+// exact tegelijk boeken elkaar niet meer overschrijven (lost update).
+// Terugval: geeft de RPC 404 (functie nog niet aangemaakt in Supabase), dan de
+// oude lees/schrijf-route, met ⚠️ in de versietag voor de eigenaar.
+let stockRpcAvailable=true;
+function flagMissingRpc() {
+  console.warn('DB-functie apply_stock_delta ontbreekt — terugval op lees/schrijf. Voer migratie-apply-stock-delta.sql uit in Supabase.');
+  const tag=document.getElementById('app-version-tag');
+  if(tag && !tag.textContent.includes('⚠️')) tag.textContent+=' · ⚠️ DB-migratie ontbreekt';
+}
 async function applyStockDelta(productId, locationId, delta) {
+  if(stockRpcAvailable) {
+    const r=await dbRpc('apply_stock_delta', {p_product_id:productId, p_location_id:locationId||null, p_delta:delta});
+    if(r.ok) return Number(await r.json());
+    if(r.status===404) { stockRpcAvailable=false; flagMissingRpc(); }
+    else throw new Error(`Voorraad bijwerken: ${r.status} ${await r.text()}`);
+  }
   if(!locationId) {
     const fresh=await dbGet('products', `id=eq.${productId}&select=qty`);
     if(!fresh||!fresh.length) return;
@@ -1618,7 +1692,7 @@ async function quickQty(id, delta, loc) {
   const newQty=Math.max(0, Math.round((cur+delta)*100)/100);
   p.qty=newQty;
   renderStock();
-  await dbPatch('products', `id=eq.${id}`, {qty:newQty});
+  await applyStockDelta(id, null, delta);   // v2.11.0: atomair i.p.v. absolute dbPatch
   await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Snelle aanpassing ${cur} → ${newQty} (Magazijn)`, date:today(), employee_name:getCurrentEmployee()||null});
 }
 
@@ -1823,7 +1897,7 @@ function openReceiveSupModal(supId) {
   openModal('modal-receive-sup');
 }
 async function confirmReceiveSup() {
-  await applyReceive('#recv-sup-list'); closeModal('modal-receive-sup');
+  return runOnce('receive', document.getElementById('recv-sup-btn'), async()=>{ await applyReceive('#recv-sup-list'); closeModal('modal-receive-sup'); });
 }
 function openReceiveAllModal() {
   const items=receivableItems(db.products.filter(needsOrder));
@@ -1832,7 +1906,7 @@ function openReceiveAllModal() {
   openModal('modal-receive-all');
 }
 async function confirmReceiveAll() {
-  await applyReceive('#recv-all-list'); closeModal('modal-receive-all');
+  return runOnce('receive', document.getElementById('recv-all-btn'), async()=>{ await applyReceive('#recv-all-list'); closeModal('modal-receive-all'); });
 }
 function recvRows(items,showSupplier=false) {
   return items.map(p=>{
@@ -1981,6 +2055,9 @@ function updateLoosePreview() {
     : (color?`Nieuw product: <strong>${p.name}</strong> in <strong>${color}</strong> · ${supplierName(p.supplier)}`:'');
 }
 async function confirmLooseOrder() {
+  return runOnce('loose', document.getElementById('lo-confirm-btn'), confirmLooseOrderImpl);
+}
+async function confirmLooseOrderImpl() {
   const projId=parseInt(document.getElementById('lo-project').value)||null;
   const base=looseBaseId?db.products.find(x=>x.id===looseBaseId):null;
   const raw=(document.getElementById('lo-color').value||'').trim();
@@ -2065,6 +2142,11 @@ function adjustStaged(btn, delta) {
   const row = btn.closest('[data-staged-id]'); if(row) stagedPending[parseInt(row.dataset.stagedId)] = inp.value;
 }
 async function loadStagedItem(id, btn) {
+  if(_busyKeys.has('staged-'+id)) return;   // v2.11.0: dubbel-tik op dezelfde regel
+  _busyKeys.add('staged-'+id);
+  try { await loadStagedItemImpl(id, btn); } finally { _busyKeys.delete('staged-'+id); }
+}
+async function loadStagedItemImpl(id, btn) {
   const r=(db.staged||[]).find(x=>x.id===id); if(!r) return;
   const pr=db.products.find(x=>x.id===r.productId); if(!pr) { alert('Product niet gevonden.'); return; }
   const row=btn.closest('[data-staged-id]');
@@ -2107,6 +2189,9 @@ async function removeStagedItem(id) {
   catch(e) { console.error(e); setSyncing('error'); alert('Verwijderen mislukt: '+(e.message||e)); }
 }
 async function confirmStage() {
+  return runOnce('issue', document.getElementById('issue-confirm-btn'), confirmStageImpl);
+}
+async function confirmStageImpl() {
   // Klaarzetten vanuit het uitgeef-venster: zelfde velden als uitgeven, maar geen boeking.
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
@@ -2701,6 +2786,9 @@ function projectSaldo(projId, prodId, negeerId) {
 }
 
 async function confirmIssue() {
+  return runOnce('issue', document.getElementById('issue-confirm-btn'), confirmIssueImpl);
+}
+async function confirmIssueImpl() {
   const prodId=parseInt(document.getElementById('issue-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
   const qty=Math.round((parseFloat(String(document.getElementById('issue-qty').value||'').replace(',','.'))||0.125)*1000)/1000;
@@ -2842,6 +2930,9 @@ function selectTransferProduct(id) {
 }
 
 async function confirmTransfer() {
+  return runOnce('transfer', document.getElementById('transfer-confirm-btn'), confirmTransferImpl);
+}
+async function confirmTransferImpl() {
   const prodId=parseInt(document.getElementById('transfer-product').value);
   if(!prodId) { alert('Selecteer eerst een product.'); return; }
   const qty=Math.round((parseFloat(String(document.getElementById('transfer-qty').value||'').replace(',','.'))||0)*1000)/1000;
@@ -2925,6 +3016,9 @@ function renderBusRefill() {
 }
 
 async function confirmBusRefill() {
+  return runOnce('busrefill', document.getElementById('bus-refill-btn'), confirmBusRefillImpl);
+}
+async function confirmBusRefillImpl() {
   const busId=busRefillTarget;
   const list=busRefillList(busId).filter(r=>r.aanvullen>0);
   if(!list.length) { alert('Niets aan te vullen.'); return; }
@@ -3381,6 +3475,9 @@ function onHistEditProductChange() {
 }
 
 async function saveHistoryEdit() {
+  return runOnce('histedit', document.getElementById('hist-save-btn'), saveHistoryEditImpl);
+}
+async function saveHistoryEditImpl() {
   const id=parseInt(document.getElementById('hist-edit-id').value);
   const oldH=db.history.find(x=>x.id===id); if(!oldH) { alert('Boeking niet gevonden.'); return; }
   if(oldH.type==='transfer') { alert('Verplaatsingen kun je niet bewerken — verwijder de boeking en maak een nieuwe.'); return; }
