@@ -99,6 +99,10 @@
   ║    └─ terugval: RPC ontbreekt (404) → oude lees/schrijf-route +      ║
   ║       ⚠️ in versietag, zodat de eigenaar de SQL-migratie ziet        ║
   ║    └─ quickQty magazijn nu ook via applyStockDelta (was dbPatch)     ║
+  ║  • Eigen beginscherm-icoon (v2.11.1)                                 ║
+  ║    └─ <link rel="apple-touch-icon"> → apple-touch-icon-voorraad.png ║
+  ║       (180×180, hoofdmap repo), ook in index.html                    ║
+  ║    └─ iOS ververst niet zelf: tegel verwijderen en opnieuw plaatsen  ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -123,6 +127,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Voorraad">
 <title>Voorraad – Schildersbedrijf</title>
+<link rel="apple-touch-icon" href="./apple-touch-icon-voorraad.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -655,8 +660,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.11.0';
-const BUILD_DATE = '2026-09-15';
+const APP_VERSION = '2.11.1';
+const BUILD_DATE = '2026-09-17';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -692,7 +697,9 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — geen dubbele boekingen meer:<br><br>
+  <strong>v${APP_VERSION}</strong> — eigen beginscherm-icoon:<br><br>
+  • <strong>Icoon op de iPhone</strong>: de Voorraad-tegel krijgt het Ernes-logo met groenblauwe band, net als de andere apps. iOS ververst een icoon niet vanzelf: verwijder de tegel "Voorraad" van je beginscherm en zet hem opnieuw via Safari → Delen → Zet op beginscherm.<br><br>
+  <em>Eerder (v2.11.0):</em> geen dubbele boekingen meer:<br><br>
   • <strong>Knop blokkeert tijdens boeken</strong>: na een tik op Uitgeven, Retourneren, Verplaatsen, Bus aanvullen, Ontvangen of Geladen wordt de knop grijs met "Bezig…" tot de boeking klaar is. Extra tikken doen niets meer. Voorheen werd elke tik een aparte boeking.<br><br>
   • <strong>Twee telefoons tegelijk</strong>: de voorraad wordt nu in één stap in de database opgeteld of afgetrokken. Boeken Bjorn en Max exact tegelijk hetzelfde product, dan tellen beide boekingen mee.<br><br>
   • <strong>Fout tijdens boeken</strong>: je krijgt een melding en de knop komt weer vrij, in plaats van dat de app stil blijft hangen.<br><br>
