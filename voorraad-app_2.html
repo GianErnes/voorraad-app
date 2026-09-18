@@ -108,6 +108,19 @@
   ║       naam+klant+datum, hoofdletter-ongevoelig                       ║
   ║    └─ afgerond standaard ingekort tot PROJ_DONE_LIMIT (15) recentste ║
   ║       (server sorteert date.desc); "Toon alle" / tijdens zoeken alles║
+  ║  • Diagnose "dode Opslaan-knop" product-modal (v2.12.1)              ║
+  ║    └─ saveProduct(): bezig-status, fout in                          ║
+  ║       #p-save-error i.p.v. alert(); hele functie in try/catch       ║
+  ║    └─ window error/unhandledrejection → #global-error strook        ║
+  ║    └─ oorzaak in werkplaats nog niet vastgesteld; deze versie maakt ║
+  ║       hem zichtbaar (tik komt niet aan vs. opslaan mislukt)         ║
+  ║  • Netwerklaag netFetch() (v2.13.0)                                  ║
+  ║    └─ alle db*-functies via netFetch: AbortController-timeout 20s,   ║
+  ║       teller schrijfacties → #busy-pill na 400ms, leesbare fouten   ║
+  ║    └─ pil bovenaan visual viewport (--vv-top), ook bij toetsenbord   ║
+  ║  • Scannen in modal-transfer (v2.13.0)                               ║
+  ║    └─ startScan('transfer') → pickTransferByScan(): alleen kiezen    ║
+  ║       als getLocQty(VAN)>0, anders melding in #transfer-selected     ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -222,6 +235,13 @@
   .color-chip-x:hover{background:var(--red);color:#fff;}
   .action-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
   .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;}
+  /* v2.12.1: fouten in beeld i.p.v. alleen alert() — op iOS-beginschermapps komt een alert niet altijd door */
+  .inline-error{background:rgba(230,57,70,.12);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px;white-space:pre-wrap;word-break:break-word;}
+  #global-error{position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--red);color:#fff;font-size:12px;padding:8px 40px 8px 12px;font-family:'JetBrains Mono',monospace;display:none;white-space:pre-wrap;word-break:break-word;}
+  #global-error .ge-close{position:absolute;right:10px;top:6px;font-size:18px;line-height:1;cursor:pointer;}
+  /* v2.13.0: bezig-pil bij openstaande schrijfactie; bovenaan de ZICHTBARE viewport, dus ook boven een open toetsenbord */
+  #busy-pill{position:fixed;left:50%;top:calc(var(--vv-top,0px) + 14px);transform:translateX(-50%) translateY(-20px);background:var(--accent2);color:#fff;font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;box-shadow:0 4px 16px rgba(0,0,0,.35);z-index:9997;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;}
+  #busy-pill.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
   .hist-item:active{background:var(--surface2);}
   .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
@@ -260,6 +280,8 @@
 </style>
 </head>
 <body>
+<div id="busy-pill">⏳ Bezig… even wachten</div>
+<div id="global-error"><span class="ge-close" onclick="this.parentNode.style.display='none'">×</span><span id="global-error-text"></span></div>
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
@@ -423,7 +445,8 @@
     <div class="form-group"><label>VERPAKKINGSEENHEID <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— bestellen in veelvouden hiervan</span></label><input id="p-pack" type="number" min="0.01" step="0.01" placeholder="bv. 10"></div>
     <div class="form-group"><label>PRIJS PER EENHEID (€)</label><input id="p-price" type="number" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>LEVERANCIER</label><select id="p-supplier"></select></div>
-    <button class="btn btn-primary btn-full" onclick="saveProduct()">Opslaan</button>
+    <div id="p-save-error" class="inline-error" style="display:none"></div>
+    <button class="btn btn-primary btn-full" id="btn-save-product" onclick="saveProduct(this)">Opslaan</button>
     <button class="btn btn-danger btn-full" id="p-delete-btn" onclick="deleteProduct()" style="display:none;margin-top:8px">Verwijderen</button>
   </div>
 </div>
@@ -560,6 +583,7 @@
       </div>
     </div>
     <div class="form-group">
+      <button class="btn btn-secondary btn-full scan-btn" onclick="startScan('transfer')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
       <label>PRODUCT</label>
       <div style="position:relative;margin-bottom:8px">
         <input id="transfer-search" placeholder="🔍 Zoek product…" oninput="filterTransferProducts()" style="padding-right:32px">
@@ -670,7 +694,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.12.0';
+const APP_VERSION = '2.13.0';
 const BUILD_DATE = '2026-09-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -707,7 +731,13 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — projecten zoeken:<br><br>
+  <strong>v${APP_VERSION}</strong> — altijd zien dat de app bezig is, en scannen bij verplaatsen:<br><br>
+  • <strong>"⏳ Bezig…"</strong> verschijnt onderaan zodra een opslaan-, boek- of verplaatsactie langer dan een halve seconde duurt, bij élke knop. Blijft het antwoord 20 seconden uit, dan krijg je een melding in plaats van stilte.<br><br>
+  • <strong>Scannen bij Materiaal verplaatsen</strong>: knop 📷 boven de productlijst, net als bij Uitgeven. Gescand product zonder voorraad op de VAN-locatie wordt gemeld, niet gekozen.<br><br>
+  <em>Eerder (v2.12.1):</em> Opslaan bij product bewerken reageert altijd zichtbaar:<br><br>
+  • De knop toont "⏳ Opslaan…" zodra je tikt. Mislukt het opslaan, dan staat de reden in een rood vak onder de knop; je invoer blijft staan.<br><br>
+  • Scriptfouten verschijnen als rode strook bovenin. Zie je die, maak een schermfoto en stuur hem door.<br><br>
+  <em>Eerder (v2.12.0):</em> projecten zoeken:<br><br>
   • <strong>Zoekveld in Projecten</strong>: typ een stuk van de projectnaam, de klant of de datum (bijvoorbeeld "vries" of "2025-03") en de lijst filtert direct. Kruisje wist het zoekveld.<br><br>
   • <strong>Kortere lijst</strong>: standaard zie je alle actieve projecten en de 15 recentste afgeronde. Knop "Toon alle" haalt de oudere erbij; tijdens zoeken doorzoek je altijd alles.<br><br>
   <em>Eerder (v2.11.1):</em> eigen beginscherm-icoon:<br><br>
@@ -863,10 +893,49 @@ document.head.appendChild(shakeStyle);
 const SUPA_URL = 'https://rcwlbcfuvfprnnkypbba.supabase.co';
 const SUPA_KEY = 'sb_publishable_1z1Igz3u6xBMvDFxpHiQmA_KJlhzbwW';
 
+// ====================== NETWERKLAAG (v2.13.0) ======================
+// Elk databaseverzoek loopt via netFetch(). Drie dingen op één plek:
+//  1. Tijdslimiet NET_TIMEOUT_MS: een verzoek dat niet antwoordt eindigt in een
+//     duidelijke fout ("geen antwoord binnen 20 s") in plaats van eindeloos wachten.
+//     Die fout loopt door de bestaande foutafhandeling van de aanroeper.
+//  2. Teller van openstaande SCHRIJFacties (POST/PATCH/DELETE/RPC). Staat er na
+//     BUSY_DELAY_MS nog één open, dan verschijnt de pil "⏳ Bezig…" onderaan. Zo is
+//     "er gebeurt niets" nooit meer stil, ongeacht via welke knop het kwam.
+//     Leesacties (poll, laden) blijven bij de sync-stip in de kop; anders zou de
+//     pil op 4G elke 5 s knipperen.
+//  3. Netwerkfout (offline) krijgt een leesbare tekst i.p.v. "Failed to fetch".
+const NET_TIMEOUT_MS = 20000;
+const BUSY_DELAY_MS = 400;
+let _netWrites = 0, _busyTimer = null;
+function updateBusyPill() {
+  const pill=document.getElementById('busy-pill');
+  if(!pill) return;
+  if(_netWrites>0) {
+    if(!_busyTimer) _busyTimer=setTimeout(()=>{ _busyTimer=null; if(_netWrites>0) pill.classList.add('show'); }, BUSY_DELAY_MS);
+  } else {
+    if(_busyTimer) { clearTimeout(_busyTimer); _busyTimer=null; }
+    pill.classList.remove('show');
+  }
+}
+async function netFetch(url, opts={}, label='') {
+  const write = (opts.method||'GET') !== 'GET';
+  const ctrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(()=>ctrl.abort(), NET_TIMEOUT_MS) : null;
+  if(write) { _netWrites++; updateBusyPill(); }
+  try {
+    return await fetch(url, ctrl ? {...opts, signal:ctrl.signal} : opts);
+  } catch(e) {
+    if(e && e.name==='AbortError') throw new Error(`${label||'Verzoek'}: geen antwoord van de database binnen ${Math.round(NET_TIMEOUT_MS/1000)} seconden. Controleer de verbinding en probeer opnieuw.`);
+    throw new Error(`${label||'Verzoek'}: geen verbinding met de database (${e&&e.message||e}). Ben je online?`);
+  } finally {
+    if(timer) clearTimeout(timer);
+    if(write) { _netWrites=Math.max(0,_netWrites-1); updateBusyPill(); }
+  }
+}
 async function dbGet(table, params='') {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, {
+  const r = await netFetch(`${SUPA_URL}/rest/v1/${table}?${params}`, {
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-  });
+  }, `GET ${table}`);
   if(!r.ok) throw new Error(`GET ${table}: ${r.status} ${await r.text()}`);
   return r.json();
 }
@@ -887,37 +956,37 @@ async function dbGetAll(table, baseParams='') {
   return all;
 }
 async function dbPost(table, body) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+  const r = await netFetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: 'POST',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
     body: JSON.stringify(body)
-  });
+  }, `POST ${table}`);
   if(!r.ok) throw new Error(`POST ${table}: ${r.status} ${await r.text()}`);
   return r.json();
 }
 async function dbPatch(table, match, body) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
+  const r = await netFetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
     method: 'PATCH',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
     body: JSON.stringify(body)
-  });
+  }, `PATCH ${table}`);
   if(!r.ok) throw new Error(`PATCH ${table}: ${r.status} ${await r.text()}`);
 }
 async function dbDelete(table, match) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
+  const r = await netFetch(`${SUPA_URL}/rest/v1/${table}?${match}`, {
     method: 'DELETE',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Prefer': 'return=minimal' }
-  });
+  }, `DELETE ${table}`);
   if(!r.ok) throw new Error(`DELETE ${table}: ${r.status} ${await r.text()}`);
 }
 // Databasefunctie aanroepen (PostgREST RPC). Geeft de Response terug zodat de
 // aanroeper zelf op status kan reageren (404 = functie bestaat nog niet).
 async function dbRpc(fn, args) {
-  return fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+  return netFetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(args)
-  });
+  }, `RPC ${fn}`);
 }
 
 // ====================== DUBBEL-TIK BLOKKADE (v2.11.0) ======================
@@ -928,6 +997,16 @@ async function dbRpc(fn, args) {
 // lopen, zet de knop zichtbaar op "Bezig…" en geeft hem in alle gevallen weer vrij.
 const BUSY_LABEL='⏳ Bezig…';
 const _busyKeys=new Set();
+// v2.12.1: onafgevangen scriptfouten en promise-fouten in een rode strook bovenin.
+// Zonder dit is een fout op de iPhone onzichtbaar (geen console) en lijkt de app 'dood'.
+function showGlobalError(msg) {
+  const el=document.getElementById('global-error'), tx=document.getElementById('global-error-text');
+  if(!el||!tx) return;
+  tx.textContent='⚠️ Scriptfout: '+msg; el.style.display='block';
+}
+window.addEventListener('error', e=>showGlobalError((e.message||'onbekend')+(e.lineno?' (regel '+e.lineno+')':'')));
+window.addEventListener('unhandledrejection', e=>showGlobalError((e.reason&&e.reason.message)||String(e.reason||'onbekende promise-fout')));
+
 async function runOnce(key, btn, fn) {
   if(_busyKeys.has(key)) return false;            // al bezig → tik negeren
   _busyKeys.add(key);
@@ -2321,11 +2400,29 @@ function openProductModal(editId=null) {
   } else {
     ['p-name','p-factuur-naam','p-color-codes','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
   }
+  hideSaveError();
   openModal('modal-product');
 }
-async function saveProduct() {
+// v2.12.1: elke tik op Opslaan geeft zichtbaar resultaat. Bezig-status op de knop,
+// fout in een rood vak ónder de knop (niet alleen alert()). De hele functie zit in
+// try/catch, ook het deel vóór de databasestap. Tijdslimiet: zie netFetch (v2.13.0).
+function showSaveError(msg) {
+  const box=document.getElementById('p-save-error');
+  if(box) { box.textContent=msg; box.style.display=''; box.scrollIntoView({block:'nearest'}); }
+  else alert(msg);
+}
+function hideSaveError() { const box=document.getElementById('p-save-error'); if(box) box.style.display='none'; }
+let _savingProduct=false;
+async function saveProduct(btn) {
+  if(_savingProduct) return;
+  btn=btn||document.getElementById('btn-save-product');
+  hideSaveError();
   const name=document.getElementById('p-name').value.trim();
-  if(!name) { alert('Vul een naam in.'); return; }
+  if(!name) { showSaveError('Vul een naam in.'); return; }
+  _savingProduct=true;
+  const label=btn?btn.textContent:'Opslaan';
+  if(btn) { btn.disabled=true; btn.classList.add('busy'); btn.textContent='⏳ Opslaan…'; }
+  try {
   const editId=parseInt(document.getElementById('p-id').value)||null;
   // Kleurcodes: split op komma, normaliseren, dedupen, lege weg
   const rawCodes=document.getElementById('p-color-codes').value;
@@ -2346,15 +2443,18 @@ async function saveProduct() {
     color_codes:colorCodes
   };
   setSyncing('syncing');
-  try {
-    if(editId) await dbPatch('products', `id=eq.${editId}`, data);
-    else await dbPost('products', data);
-    closeModal('modal-product');
-    await loadAll();
+  // Tijdslimiet zit sinds v2.13.0 centraal in netFetch (NET_TIMEOUT_MS)
+  if(editId) await dbPatch('products', `id=eq.${editId}`, data);
+  else await dbPost('products', data);
+  closeModal('modal-product');
+  await loadAll();
   } catch(err) {
     console.error('saveProduct error:', err);
     setSyncing('error');
-    alert('Opslaan mislukt — product is NIET aangemaakt.\n\nFout van de database:\n' + (err.message || err) + '\n\nControleer de invoer (vooral leverancier en categorie) en probeer opnieuw. Modal blijft open zodat je niet alles opnieuw hoeft te typen.');
+    showSaveError('Opslaan mislukt — wijziging is NIET bewaard.\n\n' + (err&&err.message || err) + '\n\nDe velden staan nog zoals je ze invulde; pas aan en tik opnieuw op Opslaan.');
+  } finally {
+    _savingProduct=false;
+    if(btn) { btn.disabled=false; btn.classList.remove('busy'); btn.textContent=label; }
   }
 }
 async function deleteProduct() {
@@ -3712,6 +3812,32 @@ function handleScanResult(code) {
     } else {
       showBarcodeChoice(prods, (p)=>{ selectIssueProduct(p.id); });
     }
+
+  } else if(scanTarget==='transfer') {
+    // v2.13.0: scannen in "Materiaal verplaatsen". De lijst toont alleen producten
+    // met voorraad op de VAN-locatie; een gescand product zonder voorraad daar wordt
+    // wel gemeld maar niet gekozen, anders verplaats je iets dat er niet ligt.
+    stopScan();
+    if(prods.length===0) {
+      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+    } else if(prods.length===1) {
+      pickTransferByScan(prods[0]);
+    } else {
+      showBarcodeChoice(prods, pickTransferByScan);
+    }
+  }
+}
+function pickTransferByScan(p) {
+  const from=getTransferFrom();
+  const avail=getLocQty(p.id, from);
+  document.getElementById('transfer-search').value=p.name;
+  refreshTransferProducts();
+  if(avail>0) {
+    selectTransferProduct(p.id);
+  } else {
+    document.getElementById('transfer-product').value='';
+    document.getElementById('transfer-selected').textContent=`⚠️ ${p.name} — geen voorraad in ${locName(from)}`;
+    document.getElementById('transfer-qty-unit').textContent='';
   }
 }
 
