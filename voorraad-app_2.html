@@ -103,6 +103,11 @@
   ║    └─ <link rel="apple-touch-icon"> → apple-touch-icon-voorraad.png ║
   ║       (180×180, hoofdmap repo), ook in index.html                    ║
   ║    └─ iOS ververst niet zelf: tegel verwijderen en opnieuw plaatsen  ║
+  ║  • Projecten zoeken (v2.12.0)                                        ║
+  ║    └─ #proj-search boven de lijst; projMatches(): alle woorden in    ║
+  ║       naam+klant+datum, hoofdletter-ongevoelig                       ║
+  ║    └─ afgerond standaard ingekort tot PROJ_DONE_LIMIT (15) recentste ║
+  ║       (server sorteert date.desc); "Toon alle" / tijdens zoeken alles║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -329,6 +334,11 @@
     <div id="stock-list"></div>
   </div>
   <div class="page" id="page-projects" style="padding-bottom:24px">
+    <!-- v2.12.0: zoeken op projectnaam, klant of datum -->
+    <div style="position:relative;margin-bottom:12px">
+      <input id="proj-search" placeholder="🔍 Zoek project, klant of datum…" oninput="renderProjects()" style="padding-left:14px;padding-right:36px">
+      <button onclick="document.getElementById('proj-search').value='';renderProjects()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">×</button>
+    </div>
     <div id="projects-list"></div>
   </div>
   <div class="page" id="page-orders" style="padding-bottom:24px">
@@ -660,8 +670,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.11.1';
-const BUILD_DATE = '2026-09-17';
+const APP_VERSION = '2.12.0';
+const BUILD_DATE = '2026-09-18';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -697,7 +707,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — eigen beginscherm-icoon:<br><br>
+  <strong>v${APP_VERSION}</strong> — projecten zoeken:<br><br>
+  • <strong>Zoekveld in Projecten</strong>: typ een stuk van de projectnaam, de klant of de datum (bijvoorbeeld "vries" of "2025-03") en de lijst filtert direct. Kruisje wist het zoekveld.<br><br>
+  • <strong>Kortere lijst</strong>: standaard zie je alle actieve projecten en de 15 recentste afgeronde. Knop "Toon alle" haalt de oudere erbij; tijdens zoeken doorzoek je altijd alles.<br><br>
+  <em>Eerder (v2.11.1):</em> eigen beginscherm-icoon:<br><br>
   • <strong>Icoon op de iPhone</strong>: de Voorraad-tegel krijgt het Ernes-logo met groenblauwe band, net als de andere apps. iOS ververst een icoon niet vanzelf: verwijder de tegel "Voorraad" van je beginscherm en zet hem opnieuw via Safari → Delen → Zet op beginscherm.<br><br>
   <em>Eerder (v2.11.0):</em> geen dubbele boekingen meer:<br><br>
   • <strong>Knop blokkeert tijdens boeken</strong>: na een tik op Uitgeven, Retourneren, Verplaatsen, Bus aanvullen, Ontvangen of Geladen wordt de knop grijs met "Bezig…" tot de boeking klaar is. Extra tikken doen niets meer. Voorheen werd elke tik een aparte boeking.<br><br>
@@ -1726,13 +1739,36 @@ async function setQty(id, value, loc) {
 }
 
 // ====================== PROJECTS ======================
+// v2.12.0: zoekveld + ingekorte lijst afgeronde projecten.
+// - Zoeken: elk woord uit het zoekveld moet voorkomen in naam, klant of datum
+//   (hoofdletter-ongevoelig). "vries 2025" vindt dus "Schuur De Vries · 2025-03-12".
+// - Zonder zoekterm: alle actieve projecten + de PROJ_DONE_LIMIT recentste afgeronde
+//   (db.projects komt van de server gesorteerd op datum, nieuwste eerst). Knop
+//   "Toon alle" haalt de rest erbij; tijdens zoeken geldt geen limiet.
+const PROJ_DONE_LIMIT = 15;
+let projShowAllDone = false;
+function projMatches(p, words) {
+  if(!words.length) return true;
+  const hay=`${p.name} ${p.client} ${p.date}`.toLowerCase();
+  return words.every(w=>hay.includes(w));
+}
 function renderProjects() {
-  const active=db.projects.filter(p=>p.status==='actief');
-  const done=db.projects.filter(p=>p.status!=='actief');
+  const q=((document.getElementById('proj-search')||{}).value||'').trim().toLowerCase();
+  const words=q.split(/\s+/).filter(Boolean);
+  const searching=words.length>0;
+  const active=db.projects.filter(p=>p.status==='actief'&&projMatches(p,words));
+  const done=db.projects.filter(p=>p.status!=='actief'&&projMatches(p,words));
+  const showAll=searching||projShowAllDone||done.length<=PROJ_DONE_LIMIT;
+  const doneShown=showAll?done:done.slice(0,PROJ_DONE_LIMIT);
   let html='';
-  if(active.length) html+='<div class="section-hdr">🏗️ Actief</div>'+active.map(projCard).join('');
-  if(done.length) html+='<div class="section-hdr">✅ Afgerond</div>'+done.map(projCard).join('');
+  if(active.length) html+=`<div class="section-hdr">🏗️ Actief${searching?` · ${active.length}`:''}</div>`+active.map(projCard).join('');
+  if(done.length) {
+    html+=`<div class="section-hdr">✅ Afgerond${searching?` · ${done.length}`:(showAll?'':` · ${doneShown.length} van ${done.length}`)}</div>`+doneShown.map(projCard).join('');
+    if(!showAll) html+=`<button class="btn btn-secondary btn-full" onclick="projShowAllDone=true;renderProjects()">Toon alle ${done.length} afgeronde projecten</button>`;
+    else if(!searching&&projShowAllDone&&done.length>PROJ_DONE_LIMIT) html+=`<button class="btn btn-secondary btn-full" onclick="projShowAllDone=false;renderProjects()">Toon alleen de ${PROJ_DONE_LIMIT} recentste</button>`;
+  }
   if(!db.projects.length) html='<div class="empty">Geen projecten</div>';
+  else if(searching&&!active.length&&!done.length) html=`<div class="empty">Geen project gevonden voor "${q}"</div>`;
   document.getElementById('projects-list').innerHTML=html;
 }
 function projCard(p) {
