@@ -63,7 +63,7 @@
 <header>
   <div class="logo">🎨 ERNES SCHILDERS</div>
   <h1>Voorraad App – Gebruiksaanwijzing</h1>
-  <div class="ver">versie 2.8.0 · build 2026-06-10</div>
+  <div class="ver">versie 2.15.0 · build 2026-09-27</div>
 </header>
 
 <div class="toc">
@@ -81,6 +81,7 @@
   <a href="#corrigeren">11. Boeking corrigeren of verwijderen</a>
   <a href="#projecten">12. Projecten &amp; export</a>
   <a href="#tips">13. Tips &amp; aandachtspunten</a>
+  <a href="#telling">14. Voorraad tellen 👑</a>
 </div>
 
 <h2 id="start">1. App openen &amp; inloggen</h2>
@@ -159,7 +160,8 @@
 <h2 id="uitgeven">4. Materiaal uitgeven aan project</h2>
 <div class="step"><div class="step-num">1</div><div class="step-body">Tik op de <strong>+ knop</strong> rechtsonder en kies <strong>🎨 Materiaal uitgeven</strong>.</div></div>
 <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Kies het project</strong> bovenaan. <strong>Verplicht</strong> — zonder project kun je niet uitgeven.</div></div>
-<div class="step"><div class="step-num">3</div><div class="step-body">Bij <strong>LOCATIE</strong> kies je waar je 't uit pakt — <strong>Magazijn</strong> of jouw bus. Standaard staat 'ie op Magazijn.</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-body">Bij <strong>LOCATIE</strong> kies je waar je 't uit pakt — <strong>Magazijn</strong> of jouw bus.</div></div>
+<div class="tip"><strong>💡 Onthouden:</strong> de app zet het project en de locatie van je vorige boeking alvast klaar (per persoon, op jouw telefoon). Werk je de hele dag vanuit je bus op één klus, dan hoef je niets om te zetten. Controleer het wél even bij een nieuwe klus.</div>
 <div class="step"><div class="step-num">4</div><div class="step-body">Zoek het product via de zoekbalk <strong>óf</strong> tik op <strong>📷 Scan barcode</strong>.</div></div>
 <div class="step"><div class="step-num">5</div><div class="step-body">Tik op het product, pas de hoeveelheid aan (stappen van <strong>0,125</strong> voor literverpakkingen) en tik <strong>Uitgeven</strong>.</div></div>
 
@@ -192,7 +194,8 @@
 <h2 id="kleuren">9. Kleurcodes &amp; statuslabels</h2>
 
 <h3>Kleurcodes</h3>
-<p>Producten kunnen meerdere kleurcodes hebben — bijvoorbeeld <span class="colorcode">RAL 9010</span> <span class="colorcode">WN</span> <span class="colorcode">S 0500-N</span>. Die zijn rood gemarkeerd op de productkaart, in één oogopslag herkenbaar.</p>
+<p><strong>Eén product = één kleur.</strong> Een product heeft hooguit één kleurcode, bijvoorbeeld <span class="colorcode">RAL 9010</span>. Die staat rood gemarkeerd op de productkaart. Heb je dezelfde verf in een andere kleur? Dan is dat een <strong>apart product</strong>: open het bestaande product en tik op <strong>Dupliceren</strong>, of maak het aan via een <strong>Losse bestelling</strong> (Bestellen-tab, eigenaar). Zo weet de app precies hoeveel er van elke kleur ligt.</p>
+<p>Producten van vroeger die nog meerdere kleurcodes hebben, staan voor eigenaren onder <strong>Instellingen → Kleurcontrole</strong>. Splits die bij gelegenheid.</p>
 
 <h3>Statuslabels</h3>
 <p>Rechts op elke productkaart staat een label. Het rekent op de <strong>magazijnvoorraad</strong> ten opzichte van het ingestelde minimum:</p>
@@ -249,8 +252,19 @@
 
 <div class="tip"><strong>💾 Back-up:</strong> In het Instellingen-scherm staat <strong>Exporteer back-up (JSON)</strong>. Maak dit zo nu en dan — minimaal vóór grote opschoonacties.</div>
 
+<h2 id="telling">14. Voorraad tellen 👑</h2>
+<p>Met een <strong>telling</strong> leg je vast wat er <strong>werkelijk</strong> ligt, in plaats van wat het systeem denkt. Doe dit een paar keer per jaar voor het magazijn, en per bus als die 'op standaard' is. <strong>Alleen eigenaren.</strong></p>
+<div class="step"><div class="step-num">1</div><div class="step-body">Ga naar <strong>Instellingen → Voorraadtelling</strong>. Kies <strong>Magazijn</strong> of een bus, en eventueel één categorie. Tik <strong>Telling starten</strong>.</div></div>
+<div class="step"><div class="step-num">2</div><div class="step-body">Loop langs de schappen. Zoek of <strong>📷 scan</strong> het product en vul in wat je telt. Je ziet bewust <strong>niet</strong> wat het systeem denkt, zodat je onbevooroordeeld telt. Elke ingevulde regel wordt direct bewaard.</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-body">Even stoppen? Tik <strong>Later verder</strong>. De telling blijft open staan onder Instellingen; daar ga je later verder.</div></div>
+<div class="step"><div class="step-num">4</div><div class="step-body">Klaar? Tik <strong>Afsluiten</strong>. Je ziet alleen de producten met een <strong>verschil</strong>, met het bedrag in euro's. Niet-getelde producten blijven ongewijzigd.</div></div>
+<div class="step"><div class="step-num">5</div><div class="step-body">Tik <strong>Correcties boeken</strong>. De voorraad wordt in één keer bijgesteld. Elke correctie staat in de geschiedenis als <strong>Telling</strong>, op jouw naam.</div></div>
+<div class="tip"><strong>💡 Bus tellen:</strong> bij een bus toont "Nog te tellen" alleen wat er volgens de app in de bus hoort (voorraad of streef). Ligt er iets in dat de app niet kent? Kies bovenin <strong>Alle producten</strong> en vul het daar in.</div>
+<div class="warn"><strong>⚠️ "Intussen gewijzigd":</strong> heeft iemand tussen tellen en afsluiten nog iets uitgegeven, dan meldt de app dat bij het product. De correctie gaat altijd uit van de actuele stand, dus die uitgifte wordt niet per ongeluk teruggedraaid.</div>
+<div class="tip"><strong>Telcorrecties</strong> tellen niet mee als projectverbruik en kun je niet bewerken. Klopt een stand toch niet: tel opnieuw, of gebruik − en + in het Voorraad-tabblad.</div>
+
 <footer>
-  Voorraad App v2.8.0 · Ernes Schilders · gianernes.github.io/voorraad-app
+  Voorraad App v2.15.0 · Ernes Schilders · gianernes.github.io/voorraad-app
 </footer>
 
 </div>

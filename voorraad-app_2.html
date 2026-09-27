@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.14.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.15.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-27                                        ║
@@ -132,6 +132,13 @@
   ║  • Eén product = één kleur (v2.14.0)                                 ║
   ║    └─ saveProduct/addColorCode weigeren 2+ codes; Instellingen →     ║
   ║       Kleurcontrole toont producten die nog 2+ codes hebben          ║
+  ║  • v2.15.0                                                           ║
+  ║    └─ issue-modal onthoudt project+locatie per medewerker            ║
+  ║       (localStorage ISSUE_MEMORY_KEY), alleen na geslaagde boeking   ║
+  ║    └─ dashboard laag-op-voorraad toont 📦 besteld + datum            ║
+  ║    └─ bare "Script error." (geen regel/bestand) → console, geen      ║
+  ║       strook; dubbele unhandledrejection-handler met alert() weg     ║
+  ║    └─ ZXing-script crossOrigin=anonymous, terugval zonder bij fout   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -758,7 +765,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.14.0';
+const APP_VERSION = '2.15.0';
 const BUILD_DATE = '2026-09-27';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -795,7 +802,11 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — voorraad tellen, en één kleur per product:<br><br>
+  <strong>v${APP_VERSION}</strong> — minder omzetten, minder dubbel bestellen:<br><br>
+  • <strong>Project en locatie worden onthouden</strong> bij Uitgeven en Retourneren, per medewerker op deze telefoon. Werk je vanuit je bus op één klus, dan staat dat de volgende keer al goed. Je kunt het altijd omzetten.<br><br>
+  • <strong>"📦 besteld"</strong> staat nu ook in de lijst "Laag op voorraad" op het dashboard, met de datum. Zo bestel je niet nog eens wat al onderweg is.<br><br>
+  • <strong>Scriptfout-strook</strong>: meldingen die niet uit de app zelf komen (bijvoorbeeld van een Safari-extensie) worden niet meer als rode strook getoond.<br><br>
+  <em>Eerder (v2.14.0):</em> voorraad tellen, en één kleur per product:<br><br>
   • <strong>Voorraadtelling</strong> (Instellingen, eigenaar): start een telling voor het magazijn of een bus, eventueel voor één categorie. Tel per product wat er werkelijk ligt (zoeken of 📷 scannen); je ziet bewust niet wat het systeem denkt. Stoppen en later verder kan. Bij "Afsluiten" zie je alleen de verschillen met de waarde in euro's, en boek je die in één keer als correctie. Correcties staan in de geschiedenis als <strong>Telling</strong> en tellen niet mee als projectverbruik.<br><br>
   • <strong>Eén product = één kleur</strong>: je kunt geen tweede kleurcode meer aan een product hangen. Voor een andere kleur maak je een apart product (Dupliceren of Losse bestelling). Producten die nog meerdere kleurcodes hebben staan onder Instellingen → Kleurcontrole.<br><br>
   <em>Eerder (v2.13.0):</em> altijd zien dat de app bezig is, en scannen bij verplaatsen:<br><br>
@@ -1071,8 +1082,19 @@ function showGlobalError(msg) {
   if(!el||!tx) return;
   tx.textContent='⚠️ Scriptfout: '+msg; el.style.display='block';
 }
-window.addEventListener('error', e=>showGlobalError((e.message||'onbekend')+(e.lineno?' (regel '+e.lineno+')':'')));
-window.addEventListener('unhandledrejection', e=>showGlobalError((e.reason&&e.reason.message)||String(e.reason||'onbekende promise-fout')));
+window.addEventListener('error', e=>{
+  // v2.15.0: een kale "Script error." zonder regelnummer of bestand is een door de
+  // browser gemaskeerde fout uit een ANDERE oorsprong (Safari-extensie, iOS-injectie,
+  // CDN-script zonder CORS). Daar kan de app niets mee en de gebruiker ook niet.
+  const bare=/^Script error\.?$/.test(String(e.message||'').trim()) && !e.lineno && !e.filename;
+  if(bare) { console.warn('Gemaskeerde cross-origin fout genegeerd:', e); return; }
+  showGlobalError((e.message||'onbekend')+(e.lineno?' (regel '+e.lineno+')':''));
+});
+window.addEventListener('unhandledrejection', e=>{
+  console.error('Onverwerkte fout:', e.reason);
+  try { setSyncing('error'); } catch(_) {}
+  showGlobalError((e.reason&&e.reason.message)||String(e.reason||'onbekende promise-fout'));
+});
 
 async function runOnce(key, btn, fn) {
   if(_busyKeys.has(key)) return false;            // al bezig → tik negeren
@@ -1486,7 +1508,7 @@ function renderDashboard() {
   document.getElementById('low-stock-list').innerHTML=low.length===0?'<div class="empty">✅ Alles op peil</div>':
     low.map(p=>`<div class="card" onclick="openProductDetail(${p.id})">
       <div class="card-row"><span class="card-title">${p.name}</span><span class="badge badge-low">${p.qty} ${p.unit}</span></div>
-      <div class="card-sub">Min: ${p.min} · ${supplierName(p.supplier)}</div>
+      <div class="card-sub">Min: ${p.min} · ${supplierName(p.supplier)}${isOrderActive(p)?` · <span style="color:var(--accent2);font-weight:600">📦 besteld${p.last_ordered_at?' '+fmtOrderedDate(p.last_ordered_at):''}${isLooseOrder(p)?' ('+orderedProjectName(p)+')':''}</span>`:''}</div>
     </div>`).join('');
   const recent=db.history.slice(0,dashboardRecentLimit);
   const totalHist=db.history.length;
@@ -2701,6 +2723,11 @@ function openIssueModal(mode) {
 
   // Locatie: default magazijn. Bij 'out' = waar het vandaan komt, bij 'in' = waar het naartoe gaat.
   document.getElementById('issue-location').innerHTML=locationOptions(null, true);
+  // v2.15.0: laatst gebruikte project en locatie van deze medewerker terugzetten,
+  // als ze nog bestaan (project actief, bus actief). Anders blijft de standaard staan.
+  const mem=recallIssueDefaults();
+  if(mem.projectId && projects.some(p=>p.id===mem.projectId)) document.getElementById('issue-project').value=String(mem.projectId);
+  if(mem.locationId && activeBuses().some(b=>b.id===mem.locationId)) document.getElementById('issue-location').value=String(mem.locationId);
   document.getElementById('issue-location-label').textContent=mode==='out'?'UIT LOCATIE':'RETOUR NAAR LOCATIE';
 
   issueProducts = [];
@@ -2713,7 +2740,17 @@ function openIssueModal(mode) {
 
   document.getElementById('issue-qty').value=1;
   document.getElementById('issue-note').value='';
+  if(mode==='in') onIssueProjectChange();   // onthouden project → lijst meteen vullen
   openModal('modal-issue');
+}
+// v2.15.0: laatst gebruikte project/locatie per medewerker, op deze telefoon.
+// Alleen bewaard na een GESLAAGDE boeking, dus nooit een keuze die niet is gebruikt.
+const ISSUE_MEMORY_KEY='ernes_issue_last_';
+function recallIssueDefaults() {
+  try { const raw=localStorage.getItem(ISSUE_MEMORY_KEY+(getCurrentEmployee()||'')); return raw?JSON.parse(raw):{}; } catch(e) { return {}; }
+}
+function rememberIssueDefaults(projectId, locationId) {
+  try { localStorage.setItem(ISSUE_MEMORY_KEY+(getCurrentEmployee()||''), JSON.stringify({projectId:projectId||null, locationId:locationId||null})); } catch(e) {}
 }
 
 function renderIssueProductList(prods) {
@@ -3037,6 +3074,7 @@ async function confirmIssueImpl() {
   setSyncing('syncing');
   await applyStockDelta(prodId, loc, issueMode==='out'?-qty:qty);
   await dbPost('history', {type:issueMode,product_id:prodId,project_id:projId,qty,note,date:today(),employee_name:getCurrentEmployee()||null,color_code:colorCode,location_id:loc});
+  rememberIssueDefaults(projId, loc);
   await loadSync();
 
   // Modal blijft open — reset product, project blijft staan
@@ -4104,8 +4142,18 @@ function startScan(target) {
     document.getElementById('scan-status').textContent='⏳ Scanner laden…';
     const s=document.createElement('script');
     s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+    // v2.15.0: met crossOrigin krijgen fouten uit dit script een echte melding in
+    // plaats van een kale "Script error.". Laadt het zo niet (CORS), dan nog één
+    // keer zonder, zodat de scanner nooit hierdoor uitvalt.
+    s.crossOrigin='anonymous';
     s.onload=()=>initScanner();
-    s.onerror=()=>{document.getElementById('scan-status').textContent='❌ Scanner kon niet laden.';};
+    s.onerror=()=>{
+      const s2=document.createElement('script');
+      s2.src=s.src;
+      s2.onload=()=>initScanner();
+      s2.onerror=()=>{document.getElementById('scan-status').textContent='❌ Scanner kon niet laden.';};
+      document.head.appendChild(s2);
+    };
     document.head.appendChild(s);
   } else { initScanner(); }
 }
@@ -4282,14 +4330,9 @@ function exportData() {
 }
 
 // ====================== INIT ======================
-// Globale vangnet voor silent fails — als een save/patch/delete ergens misgaat zonder lokale try/catch
-// dan zien we 'm hier en krijgt de gebruiker een melding (ipv stilletjes mislukken).
-window.addEventListener('unhandledrejection', e => {
-  console.error('Onverwerkte fout:', e.reason);
-  setSyncing('error');
-  const msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
-  alert('⚠️ Er ging iets mis — actie waarschijnlijk niet uitgevoerd.\n\nFout: ' + msg + '\n\nVernieuw de pagina als de app raar doet en probeer opnieuw.');
-});
+// Globale vangnet voor onverwerkte promise-fouten: zie de 'unhandledrejection'-
+// handler bij showGlobalError (rode strook + sync-status). De aparte alert()-versie
+// die hier stond is in v2.15.0 verwijderd: hij verdubbelde de melding.
 
 document.querySelectorAll('.modal-overlay').forEach(el=>{
   el.addEventListener('click',e=>{
