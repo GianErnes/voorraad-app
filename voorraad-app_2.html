@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.10.2 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.14.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-09-13                                        ║
+  ║  Laatst gewijzigd: 2026-09-27                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -121,6 +121,17 @@
   ║  • Scannen in modal-transfer (v2.13.0)                               ║
   ║    └─ startScan('transfer') → pickTransferByScan(): alleen kiezen    ║
   ║       als getLocQty(VAN)>0, anders melding in #transfer-selected     ║
+  ║  • Voorraadtelling (v2.14.0)                                         ║
+  ║    └─ tabellen stock_counts + stock_count_lines (SQL: migratie)      ║
+  ║    └─ Instellingen → Voorraadtelling (eigenaar): starten, verder,    ║
+  ║       afsluiten, annuleren. Modals modal-count / modal-count-close   ║
+  ║    └─ afsluiten: VERSE stand ophalen, delta = geteld − actueel,      ║
+  ║       via applyStockDelta + history type 'count' (qty = delta,       ║
+  ║       mag negatief). Niet bewerkbaar in history-edit.                ║
+  ║    └─ startScan('count') → pickCountByScan()                         ║
+  ║  • Eén product = één kleur (v2.14.0)                                 ║
+  ║    └─ saveProduct/addColorCode weigeren 2+ codes; Instellingen →     ║
+  ║       Kleurcontrole toont producten die nog 2+ codes hebben          ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -245,7 +256,7 @@
   .hist-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
   .hist-item:active{background:var(--surface2);}
   .hist-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0;}
-  .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}.hist-dot.transfer{background:#3b82f6;}
+  .hist-dot.out{background:var(--red);}.hist-dot.in{background:var(--green);}.hist-dot.order{background:var(--accent2);}.hist-dot.transfer{background:#3b82f6;}.hist-dot.count{background:#8b5cf6;}
   .hist-text{font-size:13px;}
   .hist-date{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
   hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
@@ -411,6 +422,25 @@
         <button class="btn btn-primary" onclick="addBus()" style="margin-top:0;white-space:nowrap">+ Voeg toe</button>
       </div>
     </div>
+    <div id="count-settings-wrap" style="display:none">
+    <div class="section-hdr">Voorraadtelling</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Tel wat er werkelijk ligt. Tijdens het tellen zie je niet wat het systeem denkt; bij het afsluiten zie je alleen de verschillen en boek je die in één keer als correctie.</p>
+      <div id="count-open-list"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <select id="count-new-location" style="flex:1;min-width:120px"></select>
+        <select id="count-new-cat" style="flex:1;min-width:120px"></select>
+      </div>
+      <button class="btn btn-primary btn-full" id="btn-start-count" onclick="startCount(this)" style="margin-top:10px">📋 Telling starten</button>
+    </div>
+    </div>
+    <div id="color-check-wrap" style="display:none">
+    <div class="section-hdr">Kleurcontrole</div>
+    <div class="card" style="border-left:4px solid var(--accent)">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Eén product = één kleur. Deze producten hebben nog meerdere kleurcodes, waardoor de voorraad per kleur onbekend is. Open het product, houd één kleur, en maak voor de andere kleur een apart product (Dupliceren of Losse bestelling).</p>
+      <div id="color-check-list"></div>
+    </div>
+    </div>
     <div class="section-hdr">App-info</div>
     <div class="card">
       <div style="font-size:13px;color:var(--text);margin-bottom:4px"><strong id="app-info-version">Versie —</strong></div>
@@ -430,7 +460,7 @@
     <input type="hidden" id="p-id">
     <div class="form-group"><label>NAAM</label><input id="p-name" placeholder="bv. Muurverf Wit 10L"></div>
     <div class="form-group"><label>FACTUUR-NAAM <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— optioneel; gebruikt op bestellijst zodat leverancier 't herkent</span></label><input id="p-factuur-naam" placeholder="bv. Sigmatex superlatex matt kl.(WN) 1ltr"></div>
-    <div class="form-group"><label>KLEURCODES <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— meerdere mogelijk, gescheiden door komma's. Worden automatisch genormaliseerd (7021 → RAL 7021)</span></label><input id="p-color-codes" placeholder="bv. RAL 7021, RAL 9010"></div>
+    <div class="form-group"><label>KLEURCODE <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— één per product; wordt genormaliseerd (7021 → RAL 7021). Andere kleur = apart product.</span></label><input id="p-color-codes" placeholder="bv. RAL 7021"></div>
     <div class="form-group"><label>BARCODE (optioneel)</label>
       <div style="display:flex;gap:8px"><input id="p-barcode" placeholder="Scan of typ barcode" style="flex:1">
       <button class="btn btn-secondary scan-btn" onclick="startScan('product')" style="margin-top:0;padding:10px 14px">📷 Scan</button></div>
@@ -657,6 +687,40 @@
     <div id="detail-content"></div>
   </div>
 </div>
+<!-- VOORRAADTELLING (v2.14.0) -->
+<div class="modal-overlay" id="modal-count">
+  <div class="modal">
+    <div class="modal-title"><span id="count-title">Telling</span><span class="modal-close" onclick="closeModal('modal-count')">×</span></div>
+    <div id="count-progress" style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:10px"></div>
+    <select id="count-view" onchange="renderCountList()" style="margin-bottom:10px">
+      <option value="todo">Nog te tellen</option>
+      <option value="all">Alle producten</option>
+      <option value="done">Geteld</option>
+    </select>
+    <button class="btn btn-secondary btn-full scan-btn" onclick="startScan('count')" style="margin-top:0;margin-bottom:10px">📷 Scan barcode</button>
+    <div style="position:relative;margin-bottom:8px">
+      <input id="count-search" placeholder="🔍 Zoek product…" oninput="renderCountList()" style="padding-right:32px">
+      <button onclick="clearCountSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">×</button>
+    </div>
+    <div id="count-status" style="font-size:13px;color:var(--red);min-height:18px;margin-bottom:6px"></div>
+    <div id="count-product-list" style="max-height:45vh;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-count')">Later verder</button>
+      <button class="btn btn-primary" style="flex:1" id="count-close-btn" onclick="openCountClose()">Afsluiten →</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-count-close">
+  <div class="modal">
+    <div class="modal-title">Telling afsluiten<span class="modal-close" onclick="closeModal('modal-count-close')">×</span></div>
+    <p id="count-close-intro" style="font-size:13px;color:var(--muted);margin-bottom:12px"></p>
+    <div id="count-close-list"></div>
+    <div id="count-close-total" style="font-size:13px;font-weight:600;margin-top:10px;font-family:'JetBrains Mono',monospace"></div>
+    <div id="count-close-error" style="font-size:13px;color:var(--red);min-height:18px;margin-top:6px"></div>
+    <button class="btn btn-primary btn-full" id="count-close-confirm" onclick="confirmCountClose(this)">✅ Correcties boeken</button>
+    <button class="btn btn-secondary btn-full" onclick="closeModal('modal-count-close');openModal('modal-count')">← Terug naar tellen</button>
+  </div>
+</div>
 <!-- SCANNER MODAL -->
 <div class="modal-overlay" id="modal-scanner" style="align-items:center;justify-content:center">
   <div class="modal" style="border-radius:var(--radius);max-height:none;padding:20px;max-width:420px">
@@ -694,8 +758,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.13.0';
-const BUILD_DATE = '2026-09-18';
+const APP_VERSION = '2.14.0';
+const BUILD_DATE = '2026-09-27';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -731,7 +795,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — altijd zien dat de app bezig is, en scannen bij verplaatsen:<br><br>
+  <strong>v${APP_VERSION}</strong> — voorraad tellen, en één kleur per product:<br><br>
+  • <strong>Voorraadtelling</strong> (Instellingen, eigenaar): start een telling voor het magazijn of een bus, eventueel voor één categorie. Tel per product wat er werkelijk ligt (zoeken of 📷 scannen); je ziet bewust niet wat het systeem denkt. Stoppen en later verder kan. Bij "Afsluiten" zie je alleen de verschillen met de waarde in euro's, en boek je die in één keer als correctie. Correcties staan in de geschiedenis als <strong>Telling</strong> en tellen niet mee als projectverbruik.<br><br>
+  • <strong>Eén product = één kleur</strong>: je kunt geen tweede kleurcode meer aan een product hangen. Voor een andere kleur maak je een apart product (Dupliceren of Losse bestelling). Producten die nog meerdere kleurcodes hebben staan onder Instellingen → Kleurcontrole.<br><br>
+  <em>Eerder (v2.13.0):</em> altijd zien dat de app bezig is, en scannen bij verplaatsen:<br><br>
   • <strong>"⏳ Bezig…"</strong> verschijnt onderaan zodra een opslaan-, boek- of verplaatsactie langer dan een halve seconde duurt, bij élke knop. Blijft het antwoord 20 seconden uit, dan krijg je een melding in plaats van stilte.<br><br>
   • <strong>Scannen bij Materiaal verplaatsen</strong>: knop 📷 boven de productlijst, net als bij Uitgeven. Gescand product zonder voorraad op de VAN-locatie wordt gemeld, niet gekozen.<br><br>
   <em>Eerder (v2.12.1):</em> Opslaan bij product bewerken reageert altijd zichtbaar:<br><br>
@@ -1032,7 +1099,7 @@ async function runOnce(key, btn, fn) {
 }
 
 // ====================== LOCAL STATE ======================
-let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[], buses:[], busStock:[], busTargets:[], staged:[] };
+let db = { categories:[], suppliers:[], products:[], projects:[], history:[], employees:[], buses:[], busStock:[], busTargets:[], staged:[], counts:[], countLines:[] };
 
 function setSyncing(state) {
   const dot = document.getElementById('sync-dot');
@@ -1081,6 +1148,7 @@ async function loadAll() {
     // Klaarzetlijst apart: bestaat de tabel nog niet (SQL niet gedraaid), dan
     // blijft de rest van de app gewoon werken en tonen we een melding op het dashboard.
     const staged = await loadStagedSafe();
+    await loadCountsSafe();
     db.categories = cats.map(r=>r.name);
     db.suppliers  = sups.map(r=>({id:r.id,name:r.name,contact:r.contact||'',email:r.email||'',phone:r.phone||''}));
     db.products   = prods.map(mapProductRow);
@@ -1132,6 +1200,7 @@ async function loadSync() {
     // Achterstand groter dan de limiet? Dan liever één keer alles goed ophalen.
     if(newHist.length >= 500) return loadAll();
     db.staged     = await loadStagedSafe();
+    await loadCountsSafe();
     db.products   = prods.map(mapProductRow);
     sortProductsByNameColor(db.products);
     db.busStock   = busStock.map(mapBusStockRow);
@@ -1426,7 +1495,7 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':'Besteld';
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?'Telling':'Besteld';
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
         : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
@@ -2419,6 +2488,11 @@ async function saveProduct(btn) {
   hideSaveError();
   const name=document.getElementById('p-name').value.trim();
   if(!name) { showSaveError('Vul een naam in.'); return; }
+  // v2.14.0: één product = één kleur
+  if(document.getElementById('p-color-codes').value.split(',').map(s=>normalizeColor(s)).filter(s=>s.length>0).length>1) {
+    showSaveError('Eén product heeft één kleur. Houd hier één kleurcode en maak voor elke andere kleur een apart product (Dupliceren of Losse bestelling).');
+    return;
+  }
   _savingProduct=true;
   const label=btn?btn.textContent:'Opslaan';
   if(btn) { btn.disabled=true; btn.classList.add('busy'); btn.textContent='⏳ Opslaan…'; }
@@ -2762,6 +2836,12 @@ async function addColorCode(productId) {
   const p = db.products.find(x=>x.id===productId);
   if(!p) return;
   const current = Array.isArray(p.color_codes) ? p.color_codes : [];
+  // v2.14.0: één product = één kleur — een tweede code wordt geweigerd
+  if(current.length>=1 && !current.includes(normalized)) {
+    alert(`Dit product heeft al een kleur (${current.join(', ')}). Eén product = één kleur.\n\nMaak voor ${normalized} een apart product via Dupliceren of Losse bestelling.`);
+    input.value='';
+    return;
+  }
   if(current.includes(normalized)) {
     // Stille no-op bij duplicaat — wel input legen + visueel signaleren
     input.value = '';
@@ -3443,6 +3523,268 @@ function renderSettings() {
       </div>`;
       }).join('');
   }
+  renderCountSettings();
+  renderColorCheck();
+}
+
+// ====================== VOORRAADTELLING (v2.14.0) ======================
+// Een telling legt vast wat er WERKELIJK ligt, per locatie (magazijn of bus) en
+// optioneel per categorie. Tijdens het tellen zie je de systeemwaarde bewust niet.
+// Elke getelde regel gaat direct naar stock_count_lines (stoppen en later verder
+// kan). Bij afsluiten (eigenaar) worden alleen de verschillen geboekt, via
+// applyStockDelta, met history-type 'count' (qty = verschil, mag negatief zijn).
+// Ontbreken de tabellen (SQL nog niet gedraaid), dan blijft de rest van de app werken.
+let countsTableMissing=false;
+let activeCountId=null;
+let _countCloseRows=null;   // regels van het open afsluitscherm (verse stand + verschil)
+function mapCountRow(r){ return {id:r.id,locationId:r.location_id||null,category:r.category||'',status:r.status||'open',startedBy:r.started_by||'',startedAt:r.started_at||''}; }
+function mapCountLineRow(r){ return {id:r.id,countId:r.count_id,productId:r.product_id,counted:Number(r.counted_qty)||0,systemQty:Number(r.system_qty)||0,employee:r.employee_name||''}; }
+async function loadCountsSafe() {
+  try {
+    const rows=await dbGet('stock_counts','status=eq.open&order=started_at.asc');
+    countsTableMissing=false;
+    const counts=rows.map(mapCountRow);
+    let lines=[];
+    if(counts.length) lines=await dbGetAll('stock_count_lines',`count_id=in.(${counts.map(c=>c.id).join(',')})&order=id.asc`);
+    db.counts=counts; db.countLines=lines.map(mapCountLineRow);
+  } catch(e) {
+    console.warn('stock_counts niet beschikbaar:', e.message||e);
+    countsTableMissing=true;
+    db.counts=db.counts||[]; db.countLines=db.countLines||[];
+  }
+}
+function getCount(id){ return (db.counts||[]).find(c=>c.id===id)||null; }
+function countLines(countId){ return (db.countLines||[]).filter(l=>l.countId===countId); }
+function countLine(countId, productId){ return (db.countLines||[]).find(l=>l.countId===countId&&l.productId===productId)||null; }
+// Alle producten die in deze telling horen (categoriefilter). Bij een bus is de
+// "verwachte" lijst kleiner: alles wat volgens systeem in de bus ligt of als streef staat.
+function countProducts(c){ return db.products.filter(p=>!c.category||p.cat===c.category); }
+function countExpected(c, p){
+  if(!c.locationId) return true;
+  return getBusQty(p.id,c.locationId)>0 || getBusTarget(p.id,c.locationId)>0;
+}
+function countLabel(c){ return `${c.locationId?'🚐':'🏠'} ${locName(c.locationId)}${c.category?' · '+c.category:''}`; }
+function countProgress(c){
+  const prods=countProducts(c).filter(p=>countExpected(c,p));
+  const done=countLines(c.id).length;
+  return {done, total:prods.length};
+}
+function renderCountSettings(){
+  const wrap=document.getElementById('count-settings-wrap'); if(!wrap) return;
+  if(!isCurrentUserOwner()) { wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const list=document.getElementById('count-open-list');
+  if(countsTableMissing) {
+    list.innerHTML=`<div class="card" style="border-left:4px solid var(--accent);margin-bottom:8px"><div class="card-title">⚠️ Telling niet actief</div><div class="card-sub" style="margin-top:4px">De tabellen <code>stock_counts</code> en <code>stock_count_lines</code> ontbreken nog. Draai de SQL-migratie van v2.14.0 in Supabase.</div></div>`;
+    document.getElementById('btn-start-count').disabled=true;
+    return;
+  }
+  document.getElementById('btn-start-count').disabled=false;
+  const open=db.counts||[];
+  list.innerHTML=open.length===0?'<div class="empty" style="padding:6px 0">Geen open telling</div>':
+    open.map(c=>{const pr=countProgress(c); const d=c.startedAt?fmtOrderedDate(c.startedAt):'';
+      return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
+        <div style="font-weight:500">${countLabel(c)}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">gestart ${d}${c.startedBy?' door '+c.startedBy:''} · ${pr.done} van ${pr.total} geteld</div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn btn-primary" style="flex:1;font-size:12px;padding:7px 8px;margin-top:0" onclick="openCountModal(${c.id})">✏️ Verder tellen</button>
+          <button class="btn btn-secondary" style="flex:1;font-size:12px;padding:7px 8px;margin-top:0" onclick="openCountClose(${c.id})">✅ Afsluiten</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:7px 10px;margin-top:0" onclick="cancelCount(${c.id})">×</button>
+        </div>
+      </div>`;}).join('');
+  const locSel=document.getElementById('count-new-location');
+  const keepLoc=locSel.value; locSel.innerHTML=locationOptions(null,true); if(keepLoc) locSel.value=keepLoc;
+  const catSel=document.getElementById('count-new-cat');
+  const keepCat=catSel.value; catSel.innerHTML=`<option value="">Alle categorieën</option>`+db.categories.map(c=>`<option value="${c}">${c}</option>`).join(''); if(keepCat) catSel.value=keepCat;
+}
+async function startCount(btn){
+  if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen een telling starten.'); return; }
+  const locationId=parseInt(document.getElementById('count-new-location').value)||null;
+  const category=document.getElementById('count-new-cat').value||null;
+  const dup=(db.counts||[]).find(c=>c.locationId===locationId&&(c.category||'')===(category||''));
+  if(dup) { alert('Er loopt al een telling voor deze locatie/categorie. Ga daar verder of sluit hem eerst af.'); return; }
+  await runOnce('count-start', btn, async()=>{
+    setSyncing('syncing');
+    const rows=await dbPost('stock_counts',{location_id:locationId,category,status:'open',started_by:getCurrentEmployee()||null});
+    await loadCountsSafe();
+    setSyncing('ok');
+    renderCountSettings();
+    const created=Array.isArray(rows)&&rows[0]?rows[0].id:null;
+    if(created) openCountModal(created);
+  });
+}
+function openCountModal(id){
+  const c=getCount(id); if(!c) { alert('Deze telling is niet (meer) open.'); renderCountSettings(); return; }
+  activeCountId=id;
+  document.getElementById('count-title').textContent='Telling · '+countLabel(c);
+  document.getElementById('count-search').value='';
+  document.getElementById('count-status').textContent='';
+  document.getElementById('count-view').value='todo';
+  closeModal('modal-count-close');
+  renderCountList();
+  openModal('modal-count');
+}
+function clearCountSearch(){ document.getElementById('count-search').value=''; renderCountList(); }
+function renderCountList(){
+  const c=getCount(activeCountId); if(!c) return;
+  const pr=countProgress(c);
+  document.getElementById('count-progress').textContent=`${pr.done} van ${pr.total} geteld${c.locationId?' (verwacht in bus)':''}`;
+  const q=document.getElementById('count-search').value.trim();
+  const view=document.getElementById('count-view').value;
+  let prods=countProducts(c);
+  if(q) prods=prods.filter(p=>productMatchesSearch(p,q));
+  else if(view==='todo') prods=prods.filter(p=>!countLine(c.id,p.id)&&countExpected(c,p));
+  else if(view==='done') prods=prods.filter(p=>countLine(c.id,p.id));
+  const list=document.getElementById('count-product-list');
+  if(!prods.length) { list.innerHTML=`<div style="padding:12px;font-size:13px;color:var(--muted);text-align:center">${q?'Geen product gevonden':view==='todo'?'✅ Alles geteld — tik op Afsluiten':'Niets'}</div>`; return; }
+  list.innerHTML=prods.slice(0,200).map(p=>countRowHtml(c,p)).join('')+(prods.length>200?`<div style="padding:10px;font-size:12px;color:var(--muted);text-align:center">… nog ${prods.length-200}, zoek om te verfijnen</div>`:'');
+}
+function countRowHtml(c,p){
+  const line=countLine(c.id,p.id);
+  const kleur=(Array.isArray(p.color_codes)&&p.color_codes.length)?` <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${p.color_codes[0]}</span>`:'';
+  return `<div id="count-row-${p.id}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:500;font-size:14px" id="count-name-${p.id}">${line?'✅ ':''}${p.name}${kleur}</div>
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px">${p.cat||''} · ${p.unit}</div>
+    </div>
+    <input type="number" inputmode="decimal" step="0.125" min="0" placeholder="—" value="${line?line.counted:''}" id="count-input-${p.id}"
+      onchange="saveCountLine(${p.id}, this)" onfocus="this.select()" style="width:88px;text-align:right;padding:8px 10px;font-size:15px">
+  </div>`;
+}
+// Eén regel opslaan zodra het veld verlaten wordt (change). Leeg veld = telling
+// voor dit product intrekken. Bij fout blijft de invoer staan en kleurt het veld rood.
+async function saveCountLine(productId, input){
+  const c=getCount(activeCountId); if(!c) return;
+  const status=document.getElementById('count-status');
+  const raw=String(input.value).replace(',','.').trim();
+  const existing=countLine(c.id,productId);
+  input.style.borderColor='';
+  try {
+    if(raw==='') {
+      if(existing) { await dbDelete('stock_count_lines',`id=eq.${existing.id}`); db.countLines=db.countLines.filter(l=>l.id!==existing.id); }
+    } else {
+      const counted=Number(raw);
+      if(!isFinite(counted)||counted<0) { input.style.borderColor='var(--red)'; status.textContent='Ongeldig aantal.'; return; }
+      const systemQty=getLocQty(productId,c.locationId);
+      const body={counted_qty:counted,system_qty:systemQty,employee_name:getCurrentEmployee()||null};
+      if(existing) { await dbPatch('stock_count_lines',`id=eq.${existing.id}`,body); existing.counted=counted; existing.systemQty=systemQty; }
+      else { const rows=await dbPost('stock_count_lines',{count_id:c.id,product_id:productId,...body}); db.countLines.push(mapCountLineRow(rows[0])); }
+    }
+    status.textContent='';
+    const p=db.products.find(x=>x.id===productId);
+    const nameEl=document.getElementById('count-name-'+productId);
+    if(p&&nameEl) nameEl.innerHTML=(countLine(c.id,productId)?'✅ ':'')+p.name+((Array.isArray(p.color_codes)&&p.color_codes.length)?` <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${p.color_codes[0]}</span>`:'');
+    const pr=countProgress(c);
+    document.getElementById('count-progress').textContent=`${pr.done} van ${pr.total} geteld${c.locationId?' (verwacht in bus)':''}`;
+  } catch(e) {
+    console.error('Telregel opslaan mislukt:', e);
+    input.style.borderColor='var(--red)';
+    status.textContent='Opslaan mislukt: '+(e.message||e)+' — pas het veld aan en probeer opnieuw.';
+  }
+}
+function pickCountByScan(p){
+  const c=getCount(activeCountId); if(!c) return;
+  if(c.category&&p.cat!==c.category) { document.getElementById('count-status').textContent=`⚠️ ${p.name} hoort niet bij categorie ${c.category}.`; return; }
+  document.getElementById('count-search').value=p.name;
+  renderCountList();
+  const inp=document.getElementById('count-input-'+p.id);
+  if(inp) { inp.focus(); inp.select(); }
+}
+// Afsluitscherm: VERSE stand ophalen (niet de stand van het moment van tellen),
+// zodat een uitgifte tussen tellen en afsluiten niet per ongeluk ongedaan wordt gemaakt.
+async function openCountClose(id){
+  const countId=id||activeCountId;
+  const c=getCount(countId); if(!c) { alert('Deze telling is niet (meer) open.'); renderCountSettings(); return; }
+  if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen een telling afsluiten.'); return; }
+  activeCountId=countId;
+  const lines=countLines(countId);
+  const listEl=document.getElementById('count-close-list');
+  const totalEl=document.getElementById('count-close-total');
+  const errEl=document.getElementById('count-close-error');
+  const btn=document.getElementById('count-close-confirm');
+  closeModal('modal-count');
+  document.getElementById('count-close-intro').textContent=`${countLabel(c)} · ${lines.length} geteld. Even de actuele stand ophalen…`;
+  listEl.innerHTML=''; totalEl.textContent=''; errEl.textContent=''; btn.disabled=true; _countCloseRows=null;
+  openModal('modal-count-close');
+  try {
+    const fresh=new Map();
+    if(!c.locationId) { (await dbGetAll('products','select=id,qty&order=id.asc')).forEach(r=>fresh.set(r.id,Number(r.qty)||0)); }
+    else { (await dbGetAll('bus_stock',`select=product_id,qty&bus_id=eq.${c.locationId}&order=id.asc`)).forEach(r=>fresh.set(r.product_id,Number(r.qty)||0)); }
+    const rows=lines.map(l=>{
+      const p=db.products.find(x=>x.id===l.productId);
+      const current=fresh.get(l.productId)||0;
+      const delta=Math.round((l.counted-current)*1000)/1000;
+      return {productId:l.productId,name:p?p.name:'?',unit:p?p.unit:'',price:p?Number(p.price)||0:0,counted:l.counted,current,systemAtCount:l.systemQty,delta,changed:Math.abs(l.systemQty-current)>0.0005};
+    }).filter(r=>db.products.some(x=>x.id===r.productId));
+    const diffs=rows.filter(r=>Math.abs(r.delta)>0.0005).sort((a,b)=>Math.abs(b.delta*b.price)-Math.abs(a.delta*a.price));
+    _countCloseRows=diffs;
+    const totalVal=diffs.reduce((s,r)=>s+r.delta*r.price,0);
+    document.getElementById('count-close-intro').textContent=`${countLabel(c)} · ${lines.length} geteld · ${diffs.length} met verschil. Niet-getelde producten blijven ongewijzigd.`;
+    listEl.innerHTML=diffs.length===0?'<div class="empty">✅ Geen verschillen</div>':diffs.map(r=>`
+      <div class="card" style="padding:10px 14px;margin-bottom:6px">
+        <div class="card-row"><span class="card-title">${r.name}</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${r.delta<0?'var(--red)':'var(--green)'}">${r.delta>0?'+':''}${r.delta} ${r.unit}</span></div>
+        <div class="card-sub" style="font-family:'JetBrains Mono',monospace">systeem ${r.current} → geteld ${r.counted} · €${(r.delta*r.price).toFixed(2)}${r.changed?` · <span style="color:var(--accent)">⚠️ intussen gewijzigd (was ${r.systemAtCount} bij tellen)</span>`:''}</div>
+      </div>`).join('');
+    totalEl.textContent=diffs.length?`Totaal: ${totalVal>=0?'+':'−'}€${Math.abs(totalVal).toFixed(2)}`:'';
+    btn.textContent=diffs.length?`✅ ${diffs.length} correctie${diffs.length===1?'':'s'} boeken`:'✅ Telling afsluiten';
+    btn.disabled=false;
+  } catch(e) {
+    console.error('Afsluitscherm laden mislukt:', e);
+    errEl.textContent='Actuele stand ophalen mislukt: '+(e.message||e)+'. Sluit dit venster en probeer opnieuw.';
+  }
+}
+async function confirmCountClose(btn){
+  const c=getCount(activeCountId); if(!c||!_countCloseRows) return;
+  const rows=_countCloseRows;
+  const ok=await runOnce('count-close', btn, async()=>{
+    setSyncing('syncing');
+    const d=today();
+    for(const r of rows) {
+      // Eerst de logboekregel, dan de voorraad. Mislukt de voorraadmutatie, dan
+      // wordt de regel weer verwijderd. Zo kan een correctie nooit "onzichtbaar"
+      // in de voorraad zitten zonder regel in het logboek (andersom wel denkbaar
+      // bij dubbele storing, maar dat is zichtbaar en herstelbaar).
+      const hist=await dbPost('history',{type:'count',product_id:r.productId,qty:r.delta,note:`Telling ${d}: ${r.current} → ${r.counted} (${locName(c.locationId)})`,date:d,employee_name:getCurrentEmployee()||null,location_id:c.locationId});
+      try {
+        await applyStockDelta(r.productId, c.locationId, r.delta);
+      } catch(e) {
+        const hid=Array.isArray(hist)&&hist[0]?hist[0].id:null;
+        if(hid) { try { await dbDelete('history',`id=eq.${hid}`); } catch(_) {} }
+        throw e;
+      }
+    }
+    await dbPatch('stock_counts',`id=eq.${c.id}`,{status:'closed',closed_by:getCurrentEmployee()||null,closed_at:new Date().toISOString()});
+    _countCloseRows=null;
+    closeModal('modal-count-close');
+    await loadAll();
+  });
+  // Halverwege mislukt? Dan zijn sommige regels al geboekt. Scherm opnieuw opbouwen
+  // met de verse stand: die regels tonen dan geen verschil meer en worden niet dubbel geboekt.
+  if(!ok) openCountClose(c.id);
+}
+async function cancelCount(id){
+  const c=getCount(id); if(!c) return;
+  const n=countLines(id).length;
+  if(!confirm(`Telling ${countLabel(c)} annuleren?${n?`\n\n${n} getelde regel${n===1?'':'s'} gaan verloren. Er wordt niets geboekt.`:''}`)) return;
+  try {
+    setSyncing('syncing');
+    await dbPatch('stock_counts',`id=eq.${id}`,{status:'cancelled'});
+    await loadCountsSafe();
+    setSyncing('ok');
+    renderCountSettings();
+  } catch(e) { setSyncing('error'); alert('Annuleren mislukt: '+(e.message||e)); }
+}
+
+// ====================== KLEURCONTROLE (v2.14.0) ======================
+function renderColorCheck(){
+  const wrap=document.getElementById('color-check-wrap'); if(!wrap) return;
+  const multi=db.products.filter(p=>Array.isArray(p.color_codes)&&p.color_codes.length>1);
+  if(!isCurrentUserOwner()||!multi.length) { wrap.style.display='none'; return; }
+  wrap.style.display='';
+  document.getElementById('color-check-list').innerHTML=multi.map(p=>`<div class="card" style="padding:10px 14px;margin-bottom:6px" onclick="openProductDetail(${p.id})">
+    <div class="card-title">${p.name}</div>
+    <div class="card-sub" style="font-family:'JetBrains Mono',monospace">${p.color_codes.join(' · ')} · voorraad ${totalQty(p)} ${p.unit}</div>
+  </div>`).join('');
 }
 
 // ---------- Streefvoorraad vastleggen (v2.9.0) ----------
@@ -3551,6 +3893,7 @@ async function deleteEmployee(id) {
 function historyStockDelta(type, qty) {
   if(type==='out') return -qty;
   if(type==='in' || type==='order') return +qty;
+  if(type==='count') return +qty;   // v2.14.0: telcorrectie, qty is al het (getekende) verschil
   return 0;
 }
 
@@ -3560,6 +3903,13 @@ function openHistoryEdit(histId) {
     return;
   }
   const h=db.history.find(x=>x.id===histId); if(!h) return;
+  // v2.14.0: telcorrecties zijn een vastlegging van een telling, niet bewerkbaar.
+  // Klopt de stand niet, doe dan een nieuwe telling of een snelle aanpassing.
+  if(h.type==='count') {
+    const prod=db.products.find(p=>p.id===h.productId);
+    alert(`Telcorrectie: ${h.qty>0?'+':''}${h.qty}× ${prod?prod.name:'?'}\n${h.note||''}\n\nEen telcorrectie kun je niet bewerken of verwijderen. Klopt de stand niet, tel dan opnieuw of pas de voorraad aan in de voorraadlijst.`);
+    return;
+  }
   // Verplaatsingen: niet bewerkbaar (van+naar tegelijk wijzigen is foutgevoelig) — alleen verwijderen.
   if(h.type==='transfer') {
     const prod=db.products.find(p=>p.id===h.productId);
@@ -3811,6 +4161,17 @@ function handleScanResult(code) {
       selectIssueProduct(prods[0].id);
     } else {
       showBarcodeChoice(prods, (p)=>{ selectIssueProduct(p.id); });
+    }
+
+  } else if(scanTarget==='count') {
+    // v2.14.0: scannen tijdens tellen — product opzoeken en het telveld focussen.
+    stopScan();
+    if(prods.length===0) {
+      alert(`Barcode "${code}" niet gevonden.\nVoeg het product eerst toe met deze barcode.`);
+    } else if(prods.length===1) {
+      pickCountByScan(prods[0]);
+    } else {
+      showBarcodeChoice(prods, pickCountByScan);
     }
 
   } else if(scanTarget==='transfer') {
