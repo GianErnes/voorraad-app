@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.16.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.17.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-28                                        ║
@@ -153,6 +153,12 @@
   ║       applyStockDelta (voorraad blijft, teller op 0)                  ║
   ║    └─ label 'count': note begint met "Telling" → 🔢 Telling, anders  ║
   ║       🔢 Correctie (dashboard + product-detail)                       ║
+  ║  • v2.17.0 — prijs wijzigen voor alle kleurvarianten tegelijk         ║
+  ║    └─ saveProduct: prijs gewijzigd → history 'count' qty 0 met note  ║
+  ║       "Prijs €a → €b"; label 💶 Prijs (countLabel/isPriceRow)         ║
+  ║    └─ andere producten met dezelfde naam (oldP.name) → confirm()    ║
+  ║       "Ook toepassen op N andere…" → per product patch + history     ║
+  ║       (fouten per product verzameld, niet blokkerend)                ║
   ║    └─ ZXing-script crossOrigin=anonymous, terugval zonder bij fout   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
@@ -788,7 +794,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.16.0';
+const APP_VERSION = '2.17.0';
 const BUILD_DATE = '2026-09-28';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -825,7 +831,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — elke voorraadwijziging laat een spoor na:<br><br>
+  <strong>v${APP_VERSION}</strong> — prijs in één keer voor alle kleuren:<br><br>
+  • <strong>Prijs voor alle kleurvarianten</strong>: wijzig je bij ✏️ Bewerken de prijs, dan vraagt de app of je die ook wilt toepassen op de andere producten met dezelfde naam (de andere kleuren). OK = allemaal, Annuleren = alleen dit product.<br><br>
+  • <strong>Prijswijziging in de geschiedenis</strong>: elke prijswijziging staat als "💶 Prijs €4,55 → €4,95" bij het product, met naam en datum. De voorraad verandert daar niet door.<br><br>
+  <em>Eerder (v2.16.0):</em> elke voorraadwijziging laat een spoor na:<br><br>
   • <strong>Bewerken boekt mee</strong>: verander je bij een product het aantal via ✏️ Bewerken, dan komt er automatisch een regel "🔢 Correctie · Handmatig via Bewerken: 4,5 → 7" in de geschiedenis, met naam en datum. Ook de beginvoorraad van een nieuw product wordt vastgelegd. Tot nu toe verdween zo'n wijziging spoorloos.<br><br>
   • <strong>Voorraadcontrole</strong> (Instellingen, eigenaar): de app vergelijkt per product wat de geschiedenis optelt met de werkelijke voorraad. Klopt het niet, dan staat het product in de lijst met het restverschil. "Beginstand vastleggen" boekt dat verschil als correctie zonder de voorraad te veranderen; daarna is elk nieuw verschil een echt signaal dat er iets buiten de boekingen om is gebeurd.<br><br>
   • <strong>Eerlijker notitie</strong>: een getal dat je los intypt in de voorraadlijst heet nu "Handmatig aangepast 4,5 → 7" (was "Voorraad ingesteld", wat op een telling leek). Echte tellingen uit de Telmodus heten "🔢 Telling", handmatige aanpassingen "🔢 Correctie".<br><br>
@@ -1547,7 +1556,8 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?countLabel(h):'Besteld';
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':countLabel(h)):'Besteld';
+      const qtyTxt=isPriceRow(h)?'':`${h.qty}× `;
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
         : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
@@ -1556,7 +1566,7 @@ function renderDashboard() {
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label}: ${h.qty}× ${prod?prod.name:'?'}${codes}${projText}</div>
+        <div><div class="hist-text">${label}: ${qtyTxt}${prod?prod.name:'?'}${codes}${projText}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join('') +
     `<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
@@ -2578,8 +2588,27 @@ async function saveProduct(btn) {
     const oldP=db.products.find(x=>x.id===editId);
     const oldQty=oldP?Number(oldP.qty)||0:0;
     const delta=Math.round((data.qty-oldQty)*1000)/1000;
+    // v2.17.0: prijswijziging → spoor in geschiedenis, en optioneel doorvoeren
+    // naar alle andere producten met dezelfde naam (kleurvarianten).
+    const oldPrice=oldP?Number(oldP.price)||0:0;
+    const priceChanged=Math.abs(data.price-oldPrice)>=0.0001;
+    const siblings=(priceChanged&&oldP)?db.products.filter(x=>x.id!==editId&&x.name===oldP.name):[];
+    const applyAll=siblings.length>0 && confirm(`Prijs €${fmtPrice(oldPrice)} → €${fmtPrice(data.price)}.\n\nOok toepassen op de ${siblings.length} andere product${siblings.length===1?'':'en'} met de naam "${oldP.name}" (andere kleuren)?\n\nOK = alle ${siblings.length+1} · Annuleren = alleen dit product`);
     await dbPatch('products', `id=eq.${editId}`, data);
     if(delta!==0) histRow={type:'count',product_id:editId,qty:delta,note:`Handmatig via Bewerken: ${oldQty} → ${data.qty} (Magazijn)`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
+    if(priceChanged) {
+      const failed=[];
+      try { await dbPost('history', priceHistoryRow(editId, oldPrice, data.price)); } catch(e) { failed.push(`${oldP.name}: ${e&&e.message||e}`); }
+      if(applyAll) {
+        for(const sib of siblings) {
+          try {
+            await dbPatch('products', `id=eq.${sib.id}`, {price:data.price});
+            await dbPost('history', priceHistoryRow(sib.id, Number(sib.price)||0, data.price));
+          } catch(e) { failed.push(`${sib.name}${sib.color_codes&&sib.color_codes.length?' ('+sib.color_codes.join(', ')+')':''}: ${e&&e.message||e}`); }
+        }
+      }
+      if(failed.length) alert(`Prijs opgeslagen, maar bij ${failed.length} onderdeel/onderdelen ging iets mis:\n\n${failed.join('\n')}\n\nControleer de prijzen van deze producten.`);
+    }
   } else {
     const rows=await dbPost('products', data);
     const newId=Array.isArray(rows)&&rows[0]?rows[0].id:null;
@@ -3374,12 +3403,12 @@ function openProductDetail(id, limit) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?'🔢 '+countLabel(h):'📦 Ontvangen';
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':'🔢 '+countLabel(h)):'📦 Ontvangen';
       const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}${route}</div>
+        <div><div class="hist-text">${label}${isPriceRow(h)?'':' '+h.qty+'×'}${proj?' → '+proj.name:''}${route}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}
     ${(histMore>0||limit>PRODUCT_HIST_DEFAULT)?`<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
@@ -4058,7 +4087,13 @@ async function deleteEmployee(id) {
 // ====================== HISTORY BEWERKEN/VERWIJDEREN ======================
 // v2.16.0: 'count' is óf een echte telling (Telmodus, note "Telling …") óf een
 // handmatige correctie (Bewerken, beginvoorraad, beginstand vastleggen).
-function countLabel(h) { return /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
+// v2.17.0: óf een prijswijziging (qty 0, note "Prijs €a → €b") — geen voorraadeffect.
+function isPriceRow(h) { return h.type==='count' && /^Prijs /.test(h.note||''); }
+function countLabel(h) { return isPriceRow(h) ? 'Prijs' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
+function fmtPrice(v) { return (Math.round((Number(v)||0)*100)/100).toFixed(2).replace('.',','); }
+function priceHistoryRow(productId, oldPrice, newPrice) {
+  return {type:'count',product_id:productId,qty:0,note:`Prijs €${fmtPrice(oldPrice)} → €${fmtPrice(newPrice)}`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
+}
 
 // Voorraad-impact per regel: out trekt af, in/order voegt toe.
 function historyStockDelta(type, qty) {
