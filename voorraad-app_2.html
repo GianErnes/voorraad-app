@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.15.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.15.1 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-09-27                                        ║
+  ║  Laatst gewijzigd: 2026-09-28                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -138,6 +138,9 @@
   ║    └─ dashboard laag-op-voorraad toont 📦 besteld + datum            ║
   ║    └─ bare "Script error." (geen regel/bestand) → console, geen      ║
   ║       strook; dubbele unhandledrejection-handler met alert() weg     ║
+  ║  • v2.15.1                                                           ║
+  ║    └─ product-detail: geschiedenis 10 regels + "Toon meer" (+30) en  ║
+  ║       "Inklappen"; type 'count' heet nu 🔢 Telling (was Ontvangen)  ║
   ║    └─ ZXing-script crossOrigin=anonymous, terugval zonder bij fout   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
@@ -765,8 +768,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.15.0';
-const BUILD_DATE = '2026-09-27';
+const APP_VERSION = '2.15.1';
+const BUILD_DATE = '2026-09-28';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -802,7 +805,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — minder omzetten, minder dubbel bestellen:<br><br>
+  <strong>v${APP_VERSION}</strong> — verder terugkijken per product:<br><br>
+  • <strong>"📜 Toon meer geschiedenis"</strong> onder de geschiedenis van een product. Standaard zie je de laatste 10 regels; elke tik haalt er 30 bij, "Inklappen" zet het weer op 10. Handig om terug te zoeken waar een voorraadverschil vandaan komt.<br><br>
+  • <strong>Telcorrecties</strong> staan in het productscherm nu als "🔢 Telling" (stonden per ongeluk als "📦 Ontvangen").<br><br>
+  <em>Eerder (v2.15.0):</em> minder omzetten, minder dubbel bestellen:<br><br>
   • <strong>Project en locatie worden onthouden</strong> bij Uitgeven en Retourneren, per medewerker op deze telefoon. Werk je vanuit je bus op één klus, dan staat dat de volgende keer al goed. Je kunt het altijd omzetten.<br><br>
   • <strong>"📦 besteld"</strong> staat nu ook in de lijst "Laag op voorraad" op het dashboard, met de datum. Zo bestel je niet nog eens wat al onderweg is.<br><br>
   • <strong>Scriptfout-strook</strong>: meldingen die niet uit de app zelf komen (bijvoorbeeld van een Safari-extensie) worden niet meer als rode strook getoond.<br><br>
@@ -3294,9 +3300,14 @@ async function confirmBusRefillImpl() {
 }
 
 // ====================== DETAIL MODALS ======================
-function openProductDetail(id) {
+// v2.15.1: limit = aantal geschiedenisregels; standaard 10, knop "Toon meer" +30.
+const PRODUCT_HIST_DEFAULT = 10;
+function openProductDetail(id, limit) {
   const p=db.products.find(x=>x.id===id); if(!p) return;
-  const hist=db.history.filter(h=>h.productId===id).slice(0,10);
+  limit = Number.isFinite(limit) && limit>0 ? limit : PRODUCT_HIST_DEFAULT;
+  const histAll=db.history.filter(h=>h.productId===id);
+  const hist=histAll.slice(0,limit);
+  const histMore=histAll.length-hist.length;
   const sup=db.suppliers.find(s=>s.id===p.supplier);
   document.getElementById('detail-title').textContent=p.name;
   const busRows=(db.busStock||[]).filter(r=>r.productId===id&&r.qty>0).map(r=>({name:locName(r.busId), qty:r.qty}));
@@ -3318,14 +3329,19 @@ function openProductDetail(id) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':'📦 Ontvangen';
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?'🔢 Telling':'📦 Ontvangen';
       const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
         <div><div class="hist-text">${label} ${h.qty}×${proj?' → '+proj.name:''}${route}</div>
         <div class="hist-date">${meta}</div></div></div>`;
-    }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}`;
+    }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}
+    ${(histMore>0||limit>PRODUCT_HIST_DEFAULT)?`<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
+      histMore>0?`<button class="btn btn-secondary" style="font-size:13px" onclick="openProductDetail(${p.id}, ${limit+30})">📜 Toon meer geschiedenis (${hist.length} van ${histAll.length})</button>`:''
+    }${
+      limit>PRODUCT_HIST_DEFAULT?`<button class="btn btn-secondary" style="font-size:13px" onclick="openProductDetail(${p.id}, ${PRODUCT_HIST_DEFAULT});document.querySelector('#modal-detail .modal').scrollTop=0">Inklappen</button>`:''
+    }</div>`:''}`;
   openModal('modal-detail');
 }
 function openProjDetail(id) {
