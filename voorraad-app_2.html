@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.15.1 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.16.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-28                                        ║
@@ -141,6 +141,18 @@
   ║  • v2.15.1                                                           ║
   ║    └─ product-detail: geschiedenis 10 regels + "Toon meer" (+30) en  ║
   ║       "Inklappen"; type 'count' heet nu 🔢 Telling (was Ontvangen)  ║
+  ║  • v2.16.0 — elke voorraadwijziging laat een spoor na                 ║
+  ║    └─ saveProduct: aantal gewijzigd via Bewerken → history 'count'   ║
+  ║       (qty = verschil, note "Handmatig via Bewerken: a → b");        ║
+  ║       nieuw product met aantal > 0 → history 'count' "Beginvoorraad" ║
+  ║    └─ setQty-notitie heet "Handmatig aangepast" (was "Voorraad       ║
+  ║       ingesteld" — leek op een telling, was een los ingetypt getal)  ║
+  ║    └─ Instellingen → Voorraadcontrole (eigenaar): per product        ║
+  ║       som(historyStockDelta) vs totalQty; restverschil ≠ 0 in lijst  ║
+  ║       "Beginstand vastleggen" boekt het rest als 'count' ZONDER      ║
+  ║       applyStockDelta (voorraad blijft, teller op 0)                  ║
+  ║    └─ label 'count': note begint met "Telling" → 🔢 Telling, anders  ║
+  ║       🔢 Correctie (dashboard + product-detail)                       ║
   ║    └─ ZXing-script crossOrigin=anonymous, terugval zonder bij fout   ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
@@ -449,6 +461,14 @@
     <div class="card" style="border-left:4px solid var(--accent)">
       <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Eén product = één kleur. Deze producten hebben nog meerdere kleurcodes, waardoor de voorraad per kleur onbekend is. Open het product, houd één kleur, en maak voor de andere kleur een apart product (Dupliceren of Losse bestelling).</p>
       <div id="color-check-list"></div>
+    </div>
+    </div>
+    <div id="stock-check-wrap" style="display:none">
+    <div class="section-hdr">Voorraadcontrole</div>
+    <div class="card" style="border-left:4px solid var(--accent)">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px" id="stock-check-msg"></p>
+      <div id="stock-check-list"></div>
+      <div id="stock-check-actions"></div>
     </div>
     </div>
     <div class="section-hdr">App-info</div>
@@ -768,7 +788,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.15.1';
+const APP_VERSION = '2.16.0';
 const BUILD_DATE = '2026-09-28';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -805,7 +825,11 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — verder terugkijken per product:<br><br>
+  <strong>v${APP_VERSION}</strong> — elke voorraadwijziging laat een spoor na:<br><br>
+  • <strong>Bewerken boekt mee</strong>: verander je bij een product het aantal via ✏️ Bewerken, dan komt er automatisch een regel "🔢 Correctie · Handmatig via Bewerken: 4,5 → 7" in de geschiedenis, met naam en datum. Ook de beginvoorraad van een nieuw product wordt vastgelegd. Tot nu toe verdween zo'n wijziging spoorloos.<br><br>
+  • <strong>Voorraadcontrole</strong> (Instellingen, eigenaar): de app vergelijkt per product wat de geschiedenis optelt met de werkelijke voorraad. Klopt het niet, dan staat het product in de lijst met het restverschil. "Beginstand vastleggen" boekt dat verschil als correctie zonder de voorraad te veranderen; daarna is elk nieuw verschil een echt signaal dat er iets buiten de boekingen om is gebeurd.<br><br>
+  • <strong>Eerlijker notitie</strong>: een getal dat je los intypt in de voorraadlijst heet nu "Handmatig aangepast 4,5 → 7" (was "Voorraad ingesteld", wat op een telling leek). Echte tellingen uit de Telmodus heten "🔢 Telling", handmatige aanpassingen "🔢 Correctie".<br><br>
+  <em>Eerder (v2.15.1):</em> verder terugkijken per product:<br><br>
   • <strong>"📜 Toon meer geschiedenis"</strong> onder de geschiedenis van een product. Standaard zie je de laatste 10 regels; elke tik haalt er 30 bij, "Inklappen" zet het weer op 10. Handig om terug te zoeken waar een voorraadverschil vandaan komt.<br><br>
   • <strong>Telcorrecties</strong> staan in het productscherm nu als "🔢 Telling" (stonden per ongeluk als "📦 Ontvangen").<br><br>
   <em>Eerder (v2.15.0):</em> minder omzetten, minder dubbel bestellen:<br><br>
@@ -1523,7 +1547,7 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?'Telling':'Besteld';
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?countLabel(h):'Besteld';
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
         : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
@@ -1911,7 +1935,7 @@ async function setQty(id, value, loc) {
   }
   renderStock();
   await applyStockDelta(id, target, delta);
-  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Voorraad ingesteld ${cur} → ${newQty} (${locName(target)})`, date:today(), employee_name:getCurrentEmployee()||null, location_id:target});
+  await dbPost('history', {type:delta>0?'in':'out', product_id:id, qty:Math.abs(delta), note:`Handmatig aangepast ${cur} → ${newQty} (${locName(target)})`, date:today(), employee_name:getCurrentEmployee()||null, location_id:target});
 }
 
 // ====================== PROJECTS ======================
@@ -2546,8 +2570,29 @@ async function saveProduct(btn) {
   };
   setSyncing('syncing');
   // Tijdslimiet zit sinds v2.13.0 centraal in netFetch (NET_TIMEOUT_MS)
-  if(editId) await dbPatch('products', `id=eq.${editId}`, data);
-  else await dbPost('products', data);
+  // v2.16.0: het aantal-veld direct opslaan liet geen spoor na in de geschiedenis.
+  // Nu wordt elk verschil als 'count'-regel geboekt (voorraad zelf is al gezet via
+  // de patch/post hieronder, dus GEEN applyStockDelta).
+  let histRow=null;
+  if(editId) {
+    const oldP=db.products.find(x=>x.id===editId);
+    const oldQty=oldP?Number(oldP.qty)||0:0;
+    const delta=Math.round((data.qty-oldQty)*1000)/1000;
+    await dbPatch('products', `id=eq.${editId}`, data);
+    if(delta!==0) histRow={type:'count',product_id:editId,qty:delta,note:`Handmatig via Bewerken: ${oldQty} → ${data.qty} (Magazijn)`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
+  } else {
+    const rows=await dbPost('products', data);
+    const newId=Array.isArray(rows)&&rows[0]?rows[0].id:null;
+    if(newId&&data.qty>0) histRow={type:'count',product_id:newId,qty:data.qty,note:`Beginvoorraad ${data.qty} (Magazijn)`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
+  }
+  if(histRow) {
+    try { await dbPost('history', histRow); }
+    catch(e) {
+      // Terugvalgedrag: product is opgeslagen, alleen het spoor ontbreekt. Melden, niet blokkeren.
+      console.error('history-regel bij Bewerken mislukt:', e);
+      alert(`Product opgeslagen, maar de geschiedenisregel voor de voorraadwijziging kon niet worden bewaard (${e&&e.message||e}). De Voorraadcontrole in Instellingen toont dit als restverschil.`);
+    }
+  }
   closeModal('modal-product');
   await loadAll();
   } catch(err) {
@@ -3329,7 +3374,7 @@ function openProductDetail(id, limit) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?'🔢 Telling':'📦 Ontvangen';
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?'🔢 '+countLabel(h):'📦 Ontvangen';
       const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
@@ -3579,6 +3624,7 @@ function renderSettings() {
   }
   renderCountSettings();
   renderColorCheck();
+  renderStockCheck();
 }
 
 // ====================== VOORRAADTELLING (v2.14.0) ======================
@@ -3841,6 +3887,73 @@ function renderColorCheck(){
   </div>`).join('');
 }
 
+// ---------- Voorraadcontrole (v2.16.0) ----------
+// Per product: wat de geschiedenis optelt (som van historyStockDelta over álle
+// regels) vergeleken met de werkelijke stand in de app (magazijn + bussen).
+// Verschil ≠ 0 betekent: er is voorraad gewijzigd zonder geschiedenisregel
+// (vóór v2.16.0 kon dat via Bewerken) of de beginvoorraad is nooit geboekt.
+function stockCheckRows() {
+  const sums={};
+  db.history.forEach(h=>{ sums[h.productId]=(sums[h.productId]||0)+historyStockDelta(h.type, h.qty); });
+  return db.products.map(p=>{
+    const expected=Math.round((sums[p.id]||0)*1000)/1000;
+    const actual=totalQty(p);
+    const rest=Math.round((actual-expected)*1000)/1000;
+    return {p, expected, actual, rest};
+  }).filter(r=>Math.abs(r.rest)>=0.001).sort((a,b)=>Math.abs(b.rest)-Math.abs(a.rest));
+}
+function renderStockCheck(){
+  const wrap=document.getElementById('stock-check-wrap'); if(!wrap) return;
+  if(!isCurrentUserOwner()) { wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const rows=stockCheckRows();
+  const msg=document.getElementById('stock-check-msg');
+  const list=document.getElementById('stock-check-list');
+  const act=document.getElementById('stock-check-actions');
+  if(!rows.length) {
+    msg.textContent='✅ Alle producten kloppen: de geschiedenis telt op tot de huidige voorraad.';
+    list.innerHTML=''; act.innerHTML=''; return;
+  }
+  const val=rows.reduce((s,r)=>s+Math.abs(r.rest)*r.p.price,0);
+  msg.innerHTML=`Bij <strong>${rows.length}</strong> product${rows.length===1?'':'en'} telt de geschiedenis niet op tot de huidige voorraad (samen €${val.toFixed(0)} aan verschil). Een positief restverschil is voorraad die er is zonder dat de geschiedenis het verklaart — meestal de beginvoorraad. Met <em>Beginstand vastleggen</em> boek je dat verschil als correctie <strong>zonder</strong> de voorraad te veranderen; daarna staat de teller op 0 en is elk nieuw verschil een echt signaal.`;
+  list.innerHTML=rows.map(r=>`<div class="card" style="padding:10px 14px;margin-bottom:6px">
+    <div class="card-title" onclick="openProductDetail(${r.p.id})" style="cursor:pointer">${r.p.name}</div>
+    <div class="card-sub" style="font-family:'JetBrains Mono',monospace">geschiedenis ${r.expected} · werkelijk ${r.actual} · <strong style="color:${r.rest>0?'var(--green)':'var(--red)'}">rest ${r.rest>0?'+':''}${r.rest} ${r.p.unit}</strong></div>
+    <button class="btn btn-secondary btn-full" style="font-size:12px;padding:7px 12px;margin-top:8px" onclick="fixStockCheck(${r.p.id}, this)">Beginstand vastleggen</button>
+  </div>`).join('');
+  act.innerHTML=`<button class="btn btn-primary btn-full" style="margin-top:6px" onclick="fixStockCheckAll(this)">Alle ${rows.length} beginstanden vastleggen</button>`;
+}
+async function fixStockCheck(productId, btn) {
+  const r=stockCheckRows().find(x=>x.p.id===productId);
+  if(!r) { renderStockCheck(); return; }
+  if(!confirm(`Beginstand vastleggen voor ${r.p.name}?\n\nEr wordt een correctieregel van ${r.rest>0?'+':''}${r.rest} ${r.p.unit} geboekt. De voorraad zelf (${r.actual}) verandert NIET.`)) return;
+  if(btn) { btn.disabled=true; btn.textContent='⏳ Bezig…'; }
+  try {
+    await postStockCheckFix(r);
+    await loadAll();
+  } catch(e) {
+    alert('Vastleggen mislukt: '+(e&&e.message||e));
+    if(btn) { btn.disabled=false; btn.textContent='Beginstand vastleggen'; }
+  }
+}
+async function fixStockCheckAll(btn) {
+  const rows=stockCheckRows();
+  if(!rows.length) { renderStockCheck(); return; }
+  if(!confirm(`Beginstand vastleggen voor alle ${rows.length} producten?\n\nPer product wordt één correctieregel geboekt. De voorraden zelf veranderen NIET.`)) return;
+  if(btn) { btn.disabled=true; btn.textContent='⏳ Bezig…'; }
+  let done=0, failed=[];
+  for(const r of rows) {
+    try { await postStockCheckFix(r); done++; }
+    catch(e) { failed.push(`${r.p.name}: ${e&&e.message||e}`); }
+  }
+  await loadAll();
+  if(failed.length) alert(`${done} vastgelegd, ${failed.length} mislukt:\n\n${failed.join('\n')}`);
+}
+// Alleen een history-regel; GEEN applyStockDelta — de voorraad is al wat hij is.
+async function postStockCheckFix(r) {
+  await dbPost('history', {type:'count', product_id:r.p.id, qty:r.rest, note:`Beginstand vastgelegd: verschil ${r.rest>0?'+':''}${r.rest} van vóór de geschiedenis (geschiedenis ${r.expected}, werkelijk ${r.actual})`, date:today(), employee_name:getCurrentEmployee()||null, location_id:null});
+}
+
 // ---------- Streefvoorraad vastleggen (v2.9.0) ----------
 // Legt de HUIDIGE busvoorraad vast als de standaard (streef) voor die bus.
 // Vervangt een eventueel bestaande streef volledig — doe dit als de bus "op standaard" is.
@@ -3943,6 +4056,10 @@ async function deleteEmployee(id) {
 }
 
 // ====================== HISTORY BEWERKEN/VERWIJDEREN ======================
+// v2.16.0: 'count' is óf een echte telling (Telmodus, note "Telling …") óf een
+// handmatige correctie (Bewerken, beginvoorraad, beginstand vastleggen).
+function countLabel(h) { return /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
+
 // Voorraad-impact per regel: out trekt af, in/order voegt toe.
 function historyStockDelta(type, qty) {
   if(type==='out') return -qty;
