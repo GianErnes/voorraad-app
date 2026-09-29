@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.18.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.18.1 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-29                                        ║
@@ -170,6 +170,10 @@
   ║       streef = ceilPack(min + 2 × week)                              ║
   ║    └─ Bewerken: voorstel onder streef + knop Overnemen (vult velden, ║
   ║       slaat niet op); Instellingen: "Minimum afwijkend" (>50%)       ║
+  ║  • v2.18.1 — "Beoordeeld, laten staan" in Minimum afwijkend           ║
+  ║    └─ products.advice_reviewed_min numeric + advice_reviewed_at date ║
+  ║       (SQL-migratie!) — kaart verbergt zolang |voorstel − beoordeeld| ║
+  ║       ≤ 25% van beoordeeld; wijkt het meer af → kaart komt terug     ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -813,7 +817,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.18.0';
+const APP_VERSION = '2.18.1';
 const BUILD_DATE = '2026-09-29';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -853,7 +857,7 @@ const CHANGELOG_HTML = `
   <strong>v${APP_VERSION}</strong> — minimum en streef op basis van verbruik:<br><br>
   • <strong>Verbruiksvoorstel bij Bewerken</strong>: onder minimum/streef zie je nu wat de app voorstelt op basis van de uitgiftes van de laatste 12 weken, de levertijd van de leverancier en een veiligheidsmarge van 30%. "Overnemen" vult de velden; opslaan doe je zelf. Bij te weinig geschiedenis (minder dan 6 weken of minder dan 3 uitgiftes) komt er geen voorstel.<br><br>
   • <strong>Levertijd per leverancier</strong> (dagen) in het leveranciersscherm. Niet ingevuld = 7 dagen.<br><br>
-  • <strong>Instellingen → Minimum afwijkend</strong>: lijst van producten waar het voorstel meer dan 50% afwijkt van het ingestelde minimum.<br><br>
+  • <strong>Instellingen → Minimum afwijkend</strong>: lijst van producten waar het voorstel meer dan 50% afwijkt van het ingestelde minimum. <strong>(v2.18.1)</strong> Met "✓ Beoordeeld, laten staan" verdwijnt een product uit de lijst; het komt pas terug als het voorstel meer dan 25% verschuift ten opzichte van toen.<br><br>
   <em>Let op:</em> het voorstel is zo goed als de boekingen. Materiaal dat zonder boeking uit het magazijn gaat, telt niet mee en maakt het voorstel te laag.<br><br>
   <em>Eerder (v2.17.0):</em> prijs in één keer voor alle kleuren:<br><br>
   • <strong>Prijs voor alle kleurvarianten</strong>: wijzig je bij ✏️ Bewerken de prijs, dan vraagt de app of je die ook wilt toepassen op de andere producten met dezelfde naam (de andere kleuren). OK = allemaal, Annuleren = alleen dit product.<br><br>
@@ -1207,7 +1211,7 @@ const FULL_EVERY_MS = 60000;  // minstens eens per minuut alsnog alles ophalen
 // Mappers gedeeld door beide rondes — één plek, zodat de lichte ronde nooit
 // uit de pas kan lopen met de volledige.
 function mapProductRow(r) {
-  return {id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
+  return {id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,adviceReviewedMin:(r.advice_reviewed_min===null||r.advice_reviewed_min===undefined)?null:Number(r.advice_reviewed_min),adviceReviewedAt:r.advice_reviewed_at||null,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
 }
 function mapStagedRow(r) { return {id:r.id,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty)||0,locationId:r.location_id||null,color:r.color_code||'',note:r.note||'',createdBy:r.created_by||'',createdAt:r.created_at||'',status:r.status||'open'}; }
 function mapHistoryRow(r) {
@@ -1466,10 +1470,15 @@ function applyUsageAdvice(min, target) {
   document.getElementById('p-target').value=target;
 }
 // Instellingen: producten waar het voorstel > 50% afwijkt van het huidige minimum.
+// v2.18.1: beoordeeld = laten staan, tot het voorstel > 25% afwijkt van de beoordeelde waarde.
+function adviceReviewedStillValid(p, u) {
+  if(p.adviceReviewedMin===null||p.adviceReviewedMin===undefined) return false;
+  return Math.abs(u.min-p.adviceReviewedMin) <= 0.25*Math.max(p.adviceReviewedMin,1);
+}
 function usageDeviations() {
   return db.products.map(p=>({p,u:usageStats(p)})).filter(x=>x.u.ok).filter(x=>{
     const cur=Number(x.p.min)||0;
-    return Math.abs(x.u.min-cur) > 0.5*Math.max(cur,1);
+    return Math.abs(x.u.min-cur) > 0.5*Math.max(cur,1) && !adviceReviewedStillValid(x.p, x.u);
   }).sort((a,b)=>Math.abs(b.u.min-(Number(b.p.min)||0))-Math.abs(a.u.min-(Number(a.p.min)||0)));
 }
 function renderUsageCheck() {
@@ -1483,10 +1492,26 @@ function renderUsageCheck() {
   msg.innerHTML=`Bij <strong>${rows.length}</strong> product${rows.length===1?'':'en'} wijkt het voorstel op basis van verbruik meer dan 50% af van het ingestelde minimum. Tik op een product om het voorstel te bekijken en eventueel over te nemen.`;
   list.innerHTML=rows.map(({p,u})=>{
     const cur=Number(p.min)||0; const up=u.min>cur;
-    return `<div class="card" style="padding:10px 14px;margin-bottom:6px;cursor:pointer" onclick="openProductModal(${p.id})">
-    <div class="card-title">${p.name}</div>
-    <div class="card-sub" style="font-family:'JetBrains Mono',monospace">min ${cur} → <strong style="color:${up?'var(--red)':'var(--green)'}">${u.min}</strong> · streef ${p.target||cur} → ${u.target} · ${u.weekly} ${p.unit}/wk</div>
+    return `<div class="card" style="padding:10px 14px;margin-bottom:6px">
+    <div class="card-title" onclick="openProductModal(${p.id})" style="cursor:pointer">${p.name}</div>
+    <div class="card-sub" onclick="openProductModal(${p.id})" style="font-family:'JetBrains Mono',monospace;cursor:pointer">min ${cur} → <strong style="color:${up?'var(--red)':'var(--green)'}">${u.min}</strong> · streef ${p.target||cur} → ${u.target} · ${u.weekly} ${p.unit}/wk${p.adviceReviewedAt?` · eerder beoordeeld ${p.adviceReviewedAt} (voorstel toen ${p.adviceReviewedMin})`:''}</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1;font-size:12px;padding:7px 10px;margin:0" onclick="openProductModal(${p.id})">Bekijken</button>
+      <button class="btn btn-secondary" style="flex:1;font-size:12px;padding:7px 10px;margin:0" onclick="markAdviceReviewed(${p.id}, ${u.min}, this)">✓ Beoordeeld, laten staan</button>
+    </div>
   </div>`;}).join('');
+}
+async function markAdviceReviewed(productId, proposedMin, btn) {
+  const p=db.products.find(x=>x.id===productId); if(!p) return;
+  if(btn) { btn.disabled=true; btn.textContent='⏳'; }
+  try {
+    await dbPatch('products', `id=eq.${productId}`, {advice_reviewed_min:proposedMin, advice_reviewed_at:today()});
+    p.adviceReviewedMin=proposedMin; p.adviceReviewedAt=today();
+    renderUsageCheck();
+  } catch(e) {
+    alert('Beoordeling opslaan mislukt: '+(e&&e.message||e)+'\n\nIs de SQL-migratie van v2.18.1 uitgevoerd?');
+    if(btn) { btn.disabled=false; btn.textContent='✓ Beoordeeld, laten staan'; }
+  }
 }
 
 function totalQty(p) { return Math.round((p.qty+busTotalQty(p.id))*1000)/1000; }
