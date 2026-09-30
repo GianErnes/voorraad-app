@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.18.2 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.18.3 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-30                                        ║
@@ -179,6 +179,13 @@
   ║       "Voorraad ingesteld|Handmatig aangepast|Snelle aanpassing")   ║
   ║       mee als retour/uitgifte → netto ≤ 0 → min 0. Nu uitgesloten   ║
   ║       via isManualCorrection(); netto ≤ 0 → geen voorstel + reden    ║
+  ║  • v2.18.3 — Telmodus: filter 🎯 Actief + FIX dubbele countLabel      ║
+  ║    └─ count-new-cat krijgt optie COUNT_ACTIVE_KEY ('🎯 Actief');     ║
+  ║       countProducts(): category===COUNT_ACTIVE_KEY → min>0           ║
+  ║       (opgeslagen in stock_counts.category als tekst, geen SQL)      ║
+  ║    └─ FIX: histCountLabel(h) uit v2.16.0 overschreef countLabel(c) van   ║
+  ║       de Telmodus (v2.14.0) → telling-titels toonden "Correctie".    ║
+  ║       Geschiedenis-variant heet nu histCountLabel(h).                ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -822,7 +829,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.18.2';
+const APP_VERSION = '2.18.3';
 const BUILD_DATE = '2026-09-30';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -859,7 +866,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — fout in het verbruiksvoorstel hersteld:<br><br>
+  <strong>v${APP_VERSION}</strong> — tellen wat ertoe doet:<br><br>
+  • <strong>Telling op "🎯 Actief"</strong>: bij het starten van een telling kun je naast een categorie nu ook "🎯 Actief" kiezen — alleen producten met een minimumvoorraad. Zo tel je de 130 producten die bewegen in plaats van alle 700.<br><br>
+  • <strong>Herstel</strong>: de titel van een telling toonde sinds v2.16.0 "Correctie" in plaats van bijvoorbeeld "🏠 Magazijn · Afplakmateriaal". Tellen en boeken werkte wel goed; alleen het etiket was fout.<br><br>
+  <em>Eerder (v2.18.2):</em> fout in het verbruiksvoorstel hersteld:<br><br>
   • <strong>Voorstel "min 0 · streef 0" verholpen</strong>: handmatige correcties (Voorraad ingesteld, Handmatig aangepast, Snelle aanpassing) telden mee als retour of uitgifte en maakten het verbruik nul. Ze tellen nu niet meer mee. Is het echte verbruik netto nul, dan komt er geen voorstel maar een uitleg.<br><br>
   <em>Eerder (v2.18.0/1):</em> minimum en streef op basis van verbruik:<br><br>
   • <strong>Verbruiksvoorstel bij Bewerken</strong>: onder minimum/streef zie je nu wat de app voorstelt op basis van de uitgiftes van de laatste 12 weken, de levertijd van de leverancier en een veiligheidsmarge van 30%. "Overnemen" vult de velden; opslaan doe je zelf. Bij te weinig geschiedenis (minder dan 6 weken of minder dan 3 uitgiftes) komt er geen voorstel.<br><br>
@@ -1686,7 +1696,7 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':countLabel(h)):'Besteld';
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':histCountLabel(h)):'Besteld';
       const qtyTxt=isPriceRow(h)?'':`${h.qty}× `;
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
@@ -3537,7 +3547,7 @@ function openProductDetail(id, limit) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':'🔢 '+countLabel(h)):'📦 Ontvangen';
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':'🔢 '+histCountLabel(h)):'📦 Ontvangen';
       const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
@@ -3822,7 +3832,12 @@ function countLines(countId){ return (db.countLines||[]).filter(l=>l.countId===c
 function countLine(countId, productId){ return (db.countLines||[]).find(l=>l.countId===countId&&l.productId===productId)||null; }
 // Alle producten die in deze telling horen (categoriefilter). Bij een bus is de
 // "verwachte" lijst kleiner: alles wat volgens systeem in de bus ligt of als streef staat.
-function countProducts(c){ return db.products.filter(p=>!c.category||p.cat===c.category); }
+// v2.18.3: '🎯 Actief' = producten met minimum > 0 (zelfde filter als de voorraadlijst).
+const COUNT_ACTIVE_KEY='🎯 Actief';
+function countProducts(c){
+  if(c.category===COUNT_ACTIVE_KEY) return db.products.filter(p=>Number(p.min)>0);
+  return db.products.filter(p=>!c.category||p.cat===c.category);
+}
 function countExpected(c, p){
   if(!c.locationId) return true;
   return getBusQty(p.id,c.locationId)>0 || getBusTarget(p.id,c.locationId)>0;
@@ -3859,7 +3874,7 @@ function renderCountSettings(){
   const locSel=document.getElementById('count-new-location');
   const keepLoc=locSel.value; locSel.innerHTML=locationOptions(null,true); if(keepLoc) locSel.value=keepLoc;
   const catSel=document.getElementById('count-new-cat');
-  const keepCat=catSel.value; catSel.innerHTML=`<option value="">Alle categorieën</option>`+db.categories.map(c=>`<option value="${c}">${c}</option>`).join(''); if(keepCat) catSel.value=keepCat;
+  const keepCat=catSel.value; catSel.innerHTML=`<option value="">Alle categorieën</option><option value="${COUNT_ACTIVE_KEY}">${COUNT_ACTIVE_KEY} (min &gt; 0, ${db.products.filter(p=>Number(p.min)>0).length})</option>`+db.categories.map(c=>`<option value="${c}">${c}</option>`).join(''); if(keepCat) catSel.value=keepCat;
 }
 async function startCount(btn){
   if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen een telling starten.'); return; }
@@ -4224,7 +4239,7 @@ async function deleteEmployee(id) {
 // handmatige correctie (Bewerken, beginvoorraad, beginstand vastleggen).
 // v2.17.0: óf een prijswijziging (qty 0, note "Prijs €a → €b") — geen voorraadeffect.
 function isPriceRow(h) { return h.type==='count' && /^Prijs /.test(h.note||''); }
-function countLabel(h) { return isPriceRow(h) ? 'Prijs' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
+function histCountLabel(h) { return isPriceRow(h) ? 'Prijs' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
 function fmtPrice(v) { return (Math.round((Number(v)||0)*100)/100).toFixed(2).replace('.',','); }
 function priceHistoryRow(productId, oldPrice, newPrice) {
   return {type:'count',product_id:productId,qty:0,note:`Prijs €${fmtPrice(oldPrice)} → €${fmtPrice(newPrice)}`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
