@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.18.1 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.18.2 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-09-29                                        ║
+  ║  Laatst gewijzigd: 2026-09-30                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -174,6 +174,11 @@
   ║    └─ products.advice_reviewed_min numeric + advice_reviewed_at date ║
   ║       (SQL-migratie!) — kaart verbergt zolang |voorstel − beoordeeld| ║
   ║       ≤ 25% van beoordeeld; wijkt het meer af → kaart komt terug     ║
+  ║  • v2.18.2 — FIX verbruiksvoorstel 0/0                                ║
+  ║    └─ usageStats telde handmatige correcties (in/out met note        ║
+  ║       "Voorraad ingesteld|Handmatig aangepast|Snelle aanpassing")   ║
+  ║       mee als retour/uitgifte → netto ≤ 0 → min 0. Nu uitgesloten   ║
+  ║       via isManualCorrection(); netto ≤ 0 → geen voorstel + reden    ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -817,8 +822,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.18.1';
-const BUILD_DATE = '2026-09-29';
+const APP_VERSION = '2.18.2';
+const BUILD_DATE = '2026-09-30';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -854,7 +859,9 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — minimum en streef op basis van verbruik:<br><br>
+  <strong>v${APP_VERSION}</strong> — fout in het verbruiksvoorstel hersteld:<br><br>
+  • <strong>Voorstel "min 0 · streef 0" verholpen</strong>: handmatige correcties (Voorraad ingesteld, Handmatig aangepast, Snelle aanpassing) telden mee als retour of uitgifte en maakten het verbruik nul. Ze tellen nu niet meer mee. Is het echte verbruik netto nul, dan komt er geen voorstel maar een uitleg.<br><br>
+  <em>Eerder (v2.18.0/1):</em> minimum en streef op basis van verbruik:<br><br>
   • <strong>Verbruiksvoorstel bij Bewerken</strong>: onder minimum/streef zie je nu wat de app voorstelt op basis van de uitgiftes van de laatste 12 weken, de levertijd van de leverancier en een veiligheidsmarge van 30%. "Overnemen" vult de velden; opslaan doe je zelf. Bij te weinig geschiedenis (minder dan 6 weken of minder dan 3 uitgiftes) komt er geen voorstel.<br><br>
   • <strong>Levertijd per leverancier</strong> (dagen) in het leveranciersscherm. Niet ingevuld = 7 dagen.<br><br>
   • <strong>Instellingen → Minimum afwijkend</strong>: lijst van producten waar het voorstel meer dan 50% afwijkt van het ingestelde minimum. <strong>(v2.18.1)</strong> Met "✓ Beoordeeld, laten staan" verdwijnt een product uit de lijst; het komt pas terug als het voorstel meer dan 25% verschuift ten opzichte van toen.<br><br>
@@ -1434,6 +1441,8 @@ function supplierLeadDays(p) {
   const s=db.suppliers.find(x=>x.id===p.supplier);
   return (s&&Number.isFinite(s.leadDays)&&s.leadDays!==null)?s.leadDays:DEFAULT_LEAD_DAYS;
 }
+// Handmatige correcties zijn als 'in'/'out' geboekt maar zeggen niets over verbruik.
+function isManualCorrection(h) { return /^(Voorraad ingesteld|Handmatig aangepast|Snelle aanpassing)/.test(h.note||''); }
 function usageStats(p) {
   const rows=db.history.filter(h=>h.productId===p.id);
   if(!rows.length) return {ok:false, reason:'geen geschiedenis'};
@@ -1442,15 +1451,19 @@ function usageStats(p) {
   const weeksSinceFirst=(now-new Date(first+'T00:00:00'))/(7*864e5);
   const weeks=Math.min(USAGE_WEEKS, weeksSinceFirst);
   const cutoff=new Date(now.getTime()-USAGE_WEEKS*7*864e5).toISOString().slice(0,10);
-  let net=0, outs=0;
+  let outQty=0, inQty=0, outs=0, corr=0;
   rows.forEach(h=>{
     if(h.date<cutoff) return;
-    if(h.type==='out') { net+=h.qty; outs++; }
-    else if(h.type==='in') net-=h.qty;
+    if(h.type!=='out' && h.type!=='in') return;
+    if(isManualCorrection(h)) { corr++; return; }   // v2.18.2: correcties zijn geen verbruik
+    if(h.type==='out') { outQty+=h.qty; outs++; }
+    else inQty+=h.qty;
   });
   if(weeks<USAGE_MIN_WEEKS) return {ok:false, reason:`pas ${Math.max(1,Math.floor(weeks))} ${Math.floor(weeks)===1?'week':'weken'} geschiedenis (minimaal ${USAGE_MIN_WEEKS})`};
-  if(outs<USAGE_MIN_OUTS) return {ok:false, reason:`maar ${outs} uitgifte${outs===1?'':'s'} in ${USAGE_WEEKS} weken (minimaal ${USAGE_MIN_OUTS})`};
-  const weekly=Math.max(0, net)/weeks;
+  if(outs<USAGE_MIN_OUTS) return {ok:false, reason:`maar ${outs} uitgifte${outs===1?'':'s'} in ${USAGE_WEEKS} weken (minimaal ${USAGE_MIN_OUTS})${corr?`; ${corr} handmatige correctie${corr===1?'':'s'} niet meegeteld`:''}`};
+  const net=outQty-inQty;
+  if(net<=0) return {ok:false, reason:`netto verbruik 0: ${outQty} ${p.unit} uitgegeven, ${inQty} ${p.unit} retour in ${USAGE_WEEKS} weken`};
+  const weekly=net/weeks;
   const lead=supplierLeadDays(p);
   const pack=Number(p.pack)>0?Number(p.pack):1;
   const min=Math.ceil(weekly*(lead/7+1)*USAGE_SAFETY);
