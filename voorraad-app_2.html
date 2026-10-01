@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.19.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.20.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-30                                        ║
@@ -208,6 +208,26 @@
   ║       als de bus boven streef uitkomt.                               ║
   ║    └─ Kolom nog niet gemigreerd (refillUnitColumnAvailable=false):   ║
   ║       veld verborgen in Bewerken, niet in PATCH/POST, eenheid 1.     ║
+  ║  • v2.19.1 — alleen versienummer. Twee verschillende builds waren     ║
+  ║    beide '2.19.0' (eerste zonder aanvul-eenheid); iPhone bleef op de  ║
+  ║    oude. LES: elke opgeleverde build krijgt een eigen nummer.         ║
+  ║  • v2.20.0 — Streef per bus beheren + Voorraadcontrole + scrollknoppen║
+  ║    └─ Instellingen → Bussen beheren → "📋 Streef bewerken" (eigenaar):║
+  ║       modal-bus-targets toont ALLE bus_targets (target>0) van de bus,║
+  ║       ook producten zonder tekort: in bus · streef-input · ✕.        ║
+  ║       "+ Product toevoegen": zoekveld (productMatchesSearch), kiest  ║
+  ║       product zonder streef>0 → persistBusTarget(…, refillUnitOf(p)).║
+  ║    └─ persistBusTarget(busId, productId, nieuw): gedeeld pad voor    ║
+  ║       aanvullijst én beheer. PATCH bestaande rij / POST nieuwe;      ║
+  ║       history 'count' qty 0 "Streef <bus>: a → b"; lokaal bijwerken. ║
+  ║       Rij blijft bestaan bij 0 (geen DELETE) — eenvoudiger, en       ║
+  ║       busRefillList filtert al op target>0.                          ║
+  ║    └─ Voorraadcontrole: knop "Alle N vastleggen" BOVEN de lijst;     ║
+  ║       lijst standaard 20 grootste verschillen, "Toon alle N" toggle. ║
+  ║    └─ #scroll-nav: twee zwevende knoppen (⤒ ⤓) linksonder, zichtbaar ║
+  ║       als het scrollgebied > 1,5× de hoogte. Doel = open .modal als  ║
+  ║       er een modal open is, anders window. Luistert op scroll        ║
+  ║       (capture) + resize + MutationObserver; isScrollNavNeeded().    ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -303,6 +323,9 @@
      overlay op de visual viewport te zetten blijft de modal-onderkant boven het toetsenbord. */
   .modal-title{font-size:18px;font-weight:600;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;}
   .modal-close{color:var(--muted);cursor:pointer;font-size:26px;line-height:1;padding:0 4px;}
+  #scroll-nav{position:fixed;left:16px;bottom:calc(24px + env(safe-area-inset-bottom));display:none;flex-direction:column;gap:8px;z-index:350;}
+  #scroll-nav.show{display:flex;}
+  #scroll-nav button{width:42px;height:42px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:20px;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;}
   .fab{position:fixed;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(230,57,70,.3);z-index:150;transition:transform .15s;}
   .fab:active{transform:scale(.92);}
   .section-hdr{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px;}
@@ -528,8 +551,8 @@
     <div class="section-hdr">Voorraadcontrole</div>
     <div class="card" style="border-left:4px solid var(--accent)">
       <p style="font-size:13px;color:var(--muted);margin-bottom:10px" id="stock-check-msg"></p>
-      <div id="stock-check-list"></div>
       <div id="stock-check-actions"></div>
+      <div id="stock-check-list"></div>
     </div>
     </div>
     <div class="section-hdr">App-info</div>
@@ -542,6 +565,10 @@
 </div>
 
 <button class="fab" onclick="openFab()">+</button>
+<div id="scroll-nav" aria-hidden="true">
+  <button type="button" onclick="scrollNavTo('top')" title="Naar boven">⤒</button>
+  <button type="button" onclick="scrollNavTo('bottom')" title="Naar beneden">⤓</button>
+</div>
 
 <!-- MODALS -->
 <!-- ADD/EDIT PRODUCT -->
@@ -729,6 +756,17 @@
   </div>
 </div>
 <!-- BUS AANVULLEN (streefvoorraad) -->
+<div class="modal-overlay" id="modal-bus-targets">
+  <div class="modal">
+    <div class="modal-title" id="bus-targets-title">Streef bewerken<span class="modal-close" onclick="closeModal('modal-bus-targets')">×</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Dit is de standaarduitrusting van de bus: wat er hoort te liggen. "Bus aanvullen" vult tot deze aantallen aan. Wijzigingen worden direct opgeslagen en komen in de geschiedenis.</p>
+    <div style="margin-bottom:12px">
+      <input id="bus-targets-search" placeholder="+ Product toevoegen — zoek op naam of kleur…" autocomplete="off" oninput="renderBusTargetSearch()" style="width:100%">
+      <div id="bus-targets-search-list" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-top:6px"></div>
+    </div>
+    <div id="bus-targets-list"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-bus-refill">
   <div class="modal">
     <div class="modal-title" id="bus-refill-title">Bus aanvullen<span class="modal-close" onclick="closeModal('modal-bus-refill')">×</span></div>
@@ -852,8 +890,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.19.0';
-const BUILD_DATE = '2026-10-01';
+const APP_VERSION = '2.20.0';
+const BUILD_DATE = '2026-10-02';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -889,7 +927,11 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — bus aanvullen op maat:<br><br>
+  <strong>v${APP_VERSION}</strong> — de standaarduitrusting van een bus beheren:<br><br>
+  • <strong>📋 Streef bewerken per bus</strong> (Instellingen → Bussen beheren): één scherm met álle producten die in een bus horen, ook de producten die nu op voorraad zijn. Per regel: wat er in de bus ligt, de streef als invoerveld, en ✕ om het product uit de lijst te halen. Met "+ Product toevoegen" zoek je een product op naam of kleur en zet je het erbij. Elke wijziging komt als "📌 Streef Bus 25: a → b" in de geschiedenis.<br><br>
+  • <strong>Voorraadcontrole</strong>: de knop "Alle … beginstanden vastleggen" staat nu bovenaan, direct onder de uitleg — niet meer onder honderden kaartjes. De lijst toont standaard de 20 grootste verschillen; "Toon alle" laat de rest zien.<br><br>
+  • <strong>Snel naar boven of beneden</strong>: op lange pagina's (Voorraad, Instellingen) en in lange schermen verschijnen linksonder twee knoppen ⤒ en ⤓.<br><br>
+  <em>Eerder (v2.19.1):</em> bus aanvullen op maat:<br><br>
   • <strong>Kleur zichtbaar bij Bus aanvullen</strong>: de aanvullijst toont nu de kleurcode onder de productnaam, zodat drie keer "Kit" niet meer op elkaar lijkt.<br><br>
   • <strong>Streef aanpassen tijdens aanvullen</strong> (eigenaar): per regel kun je de streefvoorraad direct wijzigen; het aanvul-aantal rekent meteen mee. Met ✕ zet je de streef op 0 en verdwijnt het product uit de aanvullijst van die bus. Terughalen kan via Instellingen → Bussen beheren → Streef vastleggen.<br><br>
   • <strong>Streefwijziging in de geschiedenis</strong>: elke aanpassing staat als "📌 Streef Bus 25: 6 → 4" bij het product, met naam en datum. De voorraad verandert daar niet door.<br><br>
@@ -3586,6 +3628,157 @@ function setRefillOverride(productId, qty) {
   renderBusRefill();
 }
 
+// v2.20.0: één pad voor elke streefwijziging (aanvullijst én Streef bewerken).
+// PATCH bestaande rij of POST nieuwe; informatieve history-regel (qty 0); lokaal
+// bijwerken. Na de awaits de rij opnieuw opzoeken: de periodieke sync kan
+// db.busTargets intussen door verse objecten vervangen hebben.
+async function persistBusTarget(busId, productId, nieuw) {
+  const bestaand=(db.busTargets||[]).find(t=>t.busId===busId && t.productId===productId);
+  const oud=bestaand?bestaand.target:0;
+  if(nieuw===oud) return bestaand;
+  let rowId=bestaand?bestaand.id:null;
+  if(bestaand) {
+    await dbPatch('bus_targets', `id=eq.${bestaand.id}`, {target_qty:nieuw});
+  } else {
+    const rows=await dbPost('bus_targets', {bus_id:busId, product_id:productId, target_qty:nieuw});
+    rowId=Array.isArray(rows)&&rows[0]?rows[0].id:null;
+  }
+  await dbPost('history', {type:'count', product_id:productId, qty:0, note:`Streef ${locName(busId)}: ${oud} → ${nieuw}`, date:today(), employee_name:getCurrentEmployee()||null, location_id:busId});
+  if(!db.busTargets) db.busTargets=[];
+  let actueel=db.busTargets.find(t=>t.busId===busId && t.productId===productId);
+  if(actueel) actueel.target=nieuw;
+  else { actueel={id:rowId, busId, productId, target:nieuw}; db.busTargets.push(actueel); }
+  return actueel;
+}
+
+// ====================== STREEF BEWERKEN PER BUS (v2.20.0) ======================
+let busTargetsBusId=null;
+function openBusTargets(busId) {
+  if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen de streefvoorraad beheren.'); return; }
+  busTargetsBusId=busId;
+  const inp=document.getElementById('bus-targets-search'); if(inp) inp.value='';
+  renderBusTargetSearch();
+  renderBusTargets();
+  openModal('modal-bus-targets');
+}
+function busTargetRows(busId) {
+  const prods=(db.busTargets||[])
+    .filter(t=>t.busId===busId && t.target>0)
+    .map(t=>db.products.find(x=>x.id===t.productId))
+    .filter(Boolean);
+  sortProductsByNameColor(prods);
+  return prods.map(p=>({p, t:(db.busTargets||[]).find(t=>t.busId===busId && t.productId===p.id)}));
+}
+function renderBusTargets() {
+  const busId=busTargetsBusId; if(busId==null) return;
+  const title=document.getElementById('bus-targets-title');
+  if(title) title.innerHTML=`Streef ${locName(busId)}<span class="modal-close" onclick="closeModal('modal-bus-targets')">×</span>`;
+  const list=document.getElementById('bus-targets-list'); if(!list) return;
+  const rows=busTargetRows(busId);
+  if(!rows.length) { list.innerHTML='<div class="empty" style="padding:14px 0">Nog geen producten met een streef voor deze bus. Zoek hierboven een product om toe te voegen.</div>'; return; }
+  list.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">${rows.length} product${rows.length===1?'':'en'}</div>`+rows.map(r=>{
+    const codes=(Array.isArray(r.p.color_codes)&&r.p.color_codes.length)
+      ?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${r.p.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${c}</span>`).join('')}</div>`:'';
+    const inBus=getBusQty(r.p.id, busId);
+    return `<div data-target-row="${r.p.id}" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:0">
+        <div style="font-weight:500;font-size:14px">${r.p.name}</div>
+        ${codes}
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">in bus ${inBus} ${r.p.unit}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">streef</span>
+        <input type="number" inputmode="decimal" step="0.125" min="0" value="${r.t.target}" data-target-input="${r.p.id}" onchange="saveBusTargetFromEditor(${busId}, ${r.p.id}, this.value, this)" style="width:64px;padding:4px 6px;font-size:13px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);border-radius:6px;text-align:right">
+        <button type="button" data-target-remove="${r.p.id}" onclick="saveBusTargetFromEditor(${busId}, ${r.p.id}, 0, this)" title="Uit de lijst halen" style="border:none;background:none;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;cursor:pointer">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderBusTargetSearch() {
+  const busId=busTargetsBusId;
+  const inp=document.getElementById('bus-targets-search');
+  const box=document.getElementById('bus-targets-search-list');
+  if(!inp||!box) return;
+  const q=(inp.value||'').trim();
+  if(!q) { box.style.display='none'; box.innerHTML=''; return; }
+  const al=new Set((db.busTargets||[]).filter(t=>t.busId===busId && t.target>0).map(t=>t.productId));
+  const hits=sortProductsByNameColor(db.products.filter(p=>!al.has(p.id) && productMatchesSearch(p,q))).slice(0,20);
+  box.style.display='';
+  box.innerHTML=hits.length
+    ?hits.map(p=>`<div data-target-add="${p.id}" onclick="addBusTargetFromEditor(${busId}, ${p.id})" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;gap:8px">
+        <span style="font-size:14px">${p.name}${orderColorSuffix(p)}</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex-shrink:0">magazijn ${p.qty} ${p.unit}</span></div>`).join('')
+    :'<div style="padding:10px 12px;font-size:13px;color:var(--muted)">Geen product gevonden (of het staat al in de lijst).</div>';
+}
+async function addBusTargetFromEditor(busId, productId) {
+  const p=db.products.find(x=>x.id===productId); if(!p) return;
+  const start=refillUnitOf(p);   // één aanvul-eenheid als beginwaarde (kan 5 L → 5)
+  setSyncing('syncing');
+  try {
+    await persistBusTarget(busId, productId, start);
+    const inp=document.getElementById('bus-targets-search'); if(inp) inp.value='';
+    renderBusTargetSearch();
+    renderBusTargets();
+    const field=document.querySelector(`#bus-targets-list input[data-target-input="${productId}"]`);
+    if(field) { field.focus(); field.select(); }
+    loadSync();
+  } catch(e) {
+    console.error(e); setSyncing('error');
+    alert('Toevoegen is niet gelukt: '+(e&&e.message?e.message:e));
+  }
+}
+async function saveBusTargetFromEditor(busId, productId, rawValue, el) {
+  if(el && el.dataset.busy) return;
+  if(el) el.dataset.busy='1';
+  const p=db.products.find(x=>x.id===productId);
+  const bestaand=(db.busTargets||[]).find(t=>t.busId===busId && t.productId===productId);
+  if(!p||!bestaand) { renderBusTargets(); return; }
+  const oud=bestaand.target;
+  let nieuw=Number(String(rawValue).replace(',','.'));
+  if(!Number.isFinite(nieuw) || nieuw<0) { alert('Vul een geldig aantal in (0 of hoger).'); renderBusTargets(); return; }
+  nieuw=Math.round(nieuw*1000)/1000;
+  if(nieuw===oud) { renderBusTargets(); return; }
+  if(nieuw===0 && !confirm(`${p.name}${orderColorSuffix(p)} uit de streeflijst van ${locName(busId)} halen?\n\nDe streef gaat van ${oud} naar 0. Terugzetten kan via "+ Product toevoegen".`)) { renderBusTargets(); return; }
+  if(el) el.disabled=true;
+  setSyncing('syncing');
+  try {
+    await persistBusTarget(busId, productId, nieuw);
+    renderBusTargets();
+    loadSync();
+  } catch(e) {
+    console.error(e); setSyncing('error');
+    alert('Streef aanpassen is niet gelukt: '+(e&&e.message?e.message:e));
+    renderBusTargets();
+  }
+}
+
+// ====================== SCROLLKNOPPEN (v2.20.0) ======================
+function scrollNavTarget() {
+  return document.querySelector('.modal-overlay.open .modal')||null;   // null = window
+}
+function isScrollNavNeeded() {
+  const t=scrollNavTarget();
+  if(t) return t.scrollHeight > t.clientHeight*1.5;
+  const h=window.innerHeight||document.documentElement.clientHeight;
+  return document.documentElement.scrollHeight > h*1.5;
+}
+function updateScrollNav() {
+  const nav=document.getElementById('scroll-nav'); if(!nav) return;
+  const ls=document.getElementById('loading-screen');
+  const loading=ls && ls.style.display!=='none';
+  nav.classList.toggle('show', !loading && isScrollNavNeeded());
+}
+function scrollNavTo(where) {
+  const t=scrollNavTarget();
+  if(t) t.scrollTo({top: where==='top'?0:t.scrollHeight, behavior:'smooth'});
+  else window.scrollTo({top: where==='top'?0:document.documentElement.scrollHeight, behavior:'smooth'});
+}
+let scrollNavTimer=null;
+function scheduleScrollNav() { clearTimeout(scrollNavTimer); scrollNavTimer=setTimeout(updateScrollNav, 120); }
+document.addEventListener('scroll', scheduleScrollNav, true);
+window.addEventListener('resize', scheduleScrollNav);
+// Na elke render kan de hoogte veranderd zijn (ook bij openen/sluiten van modals).
+new MutationObserver(scheduleScrollNav).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:['class','style']});
+
 // v2.19.0: eigenaar past de streef van een product voor deze bus aan vanuit het
 // aanvulscherm. 0 = product niet meer aanvullen in deze bus (regel verdwijnt).
 // Schrijft PATCH bus_targets + informatieve history-regel (qty 0, geen voorraadeffect).
@@ -3610,12 +3803,7 @@ async function updateBusTarget(busId, productId, rawValue, el) {
   if(el) el.disabled=true;
   setSyncing('syncing');
   try {
-    await dbPatch('bus_targets', `id=eq.${row.id}`, {target_qty:nieuw});
-    await dbPost('history', {type:'count', product_id:productId, qty:0, note:`Streef ${locName(busId)}: ${oud} → ${nieuw}`, date:today(), employee_name:getCurrentEmployee()||null, location_id:busId});
-    // Tijdens de awaits kan de periodieke sync db.busTargets vervangen hebben door
-    // verse objecten — daarom de regel opnieuw opzoeken in plaats van `row` te gebruiken.
-    const actueel=(db.busTargets||[]).find(t=>t.busId===busId && t.productId===productId);
-    if(actueel) actueel.target=nieuw;
+    await persistBusTarget(busId, productId, nieuw);
     renderBusRefill();
     loadSync();
   } catch(e) {
@@ -3917,7 +4105,10 @@ function renderSettings() {
           </span>
         </div>
         <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px">${stockCount} producten in voorraad · streef: ${targetCount?targetCount+' producten':'nog niet ingesteld'}</div>
-        <button class="btn btn-secondary btn-full" style="font-size:12px;padding:7px 12px;margin-top:10px" onclick="setBusTargetsFromStock(${b.id})">📌 Huidige voorraad vastleggen als streef</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-secondary" style="flex:1;font-size:12px;padding:7px 12px" onclick="openBusTargets(${b.id})">📋 Streef bewerken</button>
+          <button class="btn btn-secondary" style="flex:1;font-size:12px;padding:7px 12px" onclick="setBusTargetsFromStock(${b.id})" title="Vervangt ALLE streefwaarden van deze bus door de huidige inhoud">📌 Inhoud → streef</button>
+        </div>
       </div>`;
       }).join('');
   }
@@ -4220,14 +4411,19 @@ function renderStockCheck(){
     list.innerHTML=''; act.innerHTML=''; return;
   }
   const val=rows.reduce((s,r)=>s+Math.abs(r.rest)*r.p.price,0);
+  const LIMIT=20;
+  const shown=stockCheckShowAll?rows:rows.slice(0,LIMIT);
   msg.innerHTML=`Bij <strong>${rows.length}</strong> product${rows.length===1?'':'en'} telt de geschiedenis niet op tot de huidige voorraad (samen €${val.toFixed(0)} aan verschil). Een positief restverschil is voorraad die er is zonder dat de geschiedenis het verklaart — meestal de beginvoorraad. Met <em>Beginstand vastleggen</em> boek je dat verschil als correctie <strong>zonder</strong> de voorraad te veranderen; daarna staat de teller op 0 en is elk nieuw verschil een echt signaal.`;
-  list.innerHTML=rows.map(r=>`<div class="card" style="padding:10px 14px;margin-bottom:6px">
+  list.innerHTML=shown.map(r=>`<div class="card" style="padding:10px 14px;margin-bottom:6px">
     <div class="card-title" onclick="openProductDetail(${r.p.id})" style="cursor:pointer">${r.p.name}</div>
     <div class="card-sub" style="font-family:'JetBrains Mono',monospace">geschiedenis ${r.expected} · werkelijk ${r.actual} · <strong style="color:${r.rest>0?'var(--green)':'var(--red)'}">rest ${r.rest>0?'+':''}${r.rest} ${r.p.unit}</strong></div>
     <button class="btn btn-secondary btn-full" style="font-size:12px;padding:7px 12px;margin-top:8px" onclick="fixStockCheck(${r.p.id}, this)">Beginstand vastleggen</button>
-  </div>`).join('');
-  act.innerHTML=`<button class="btn btn-primary btn-full" style="margin-top:6px" onclick="fixStockCheckAll(this)">Alle ${rows.length} beginstanden vastleggen</button>`;
+  </div>`).join('')
+    +(rows.length>LIMIT?`<button class="btn btn-secondary btn-full" style="font-size:12px;padding:7px 12px" onclick="stockCheckShowAll=!stockCheckShowAll;renderStockCheck()">${stockCheckShowAll?'Toon alleen de grootste 20':`Toon alle ${rows.length}`}</button>`:'');
+  act.innerHTML=`<button class="btn btn-primary btn-full" style="margin:0 0 12px" onclick="fixStockCheckAll(this)">Alle ${rows.length} beginstanden vastleggen</button>`
+    +(rows.length>LIMIT&&!stockCheckShowAll?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Hieronder de ${LIMIT} grootste verschillen van ${rows.length}.</div>`:'');
 }
+let stockCheckShowAll=false;
 async function fixStockCheck(productId, btn) {
   const r=stockCheckRows().find(x=>x.p.id===productId);
   if(!r) { renderStockCheck(); return; }
@@ -4269,7 +4465,7 @@ async function setBusTargetsFromStock(busId) {
   if(!huidig.length) { alert(`${bus.name} is leeg — er is niets om als streef vast te leggen. Vul de bus eerst met de standaard voorraad.`); return; }
   const bestaand=(db.busTargets||[]).some(t=>t.busId===busId && t.target>0);
   const waarschuwing=bestaand?'\n\nDe huidige streefwaarden voor deze bus worden hierdoor vervangen.':'';
-  if(!confirm(`De huidige inhoud van ${bus.name} (${huidig.length} producten) vastleggen als standaard streefvoorraad?${waarschuwing}`)) return;
+  if(!confirm(`De huidige inhoud van ${bus.name} (${huidig.length} producten) vastleggen als standaard streefvoorraad?${waarschuwing}\n\nLet op: dit vervangt de volledige lijst. Eén product aanpassen doe je via 📋 Streef bewerken.`)) return;
   setSyncing('syncing');
   // Schone lei: bestaande streef voor deze bus weg, dan opnieuw vastleggen
   await dbDelete('bus_targets', `bus_id=eq.${busId}`);
