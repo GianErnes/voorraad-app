@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.18.3 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.19.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-30                                        ║
@@ -198,6 +198,16 @@
   ║       in dashboard/product-detail; openHistoryEdit: eigen melding    ║
   ║       voor prijs-/streefregels (geen "Telcorrectie").                ║
   ║    └─ Niet-eigenaren: lijst alleen-lezen, aanvullen zoals voorheen.  ║
+  ║    └─ AANVUL-EENHEID: products.refill_unit numeric NULL (SQL-        ║
+  ║       MIGRATIE!) — kleinste hoeveelheid magazijn→bus (kan 5 L,      ║
+  ║       koker 1). NIET pack (dat is soms doosinhoud). Leeg/NULL = 1.   ║
+  ║       busRefillList: nodig = ceil(tekort/e)·e; hele = floor(mag/e)·e;║
+  ║       aanvullen = min(nodig, hele). hele 0 && mag>0 → "alleen        ║
+  ║       aangebroken", aanvullen 0 + knop "Toch meegeven" (iedereen,    ║
+  ║       sessie-override busRefillOverride). Regel toont "→ wordt X"    ║
+  ║       als de bus boven streef uitkomt.                               ║
+  ║    └─ Kolom nog niet gemigreerd (refillUnitColumnAvailable=false):   ║
+  ║       veld verborgen in Bewerken, niet in PATCH/POST, eenheid 1.     ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -555,6 +565,7 @@
     <div class="form-group"><label>STREEFVOORRAAD <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— wat in het schap moet staan na bestelling</span></label><input id="p-target" type="number" min="0" step="0.01" placeholder="bv. 60"></div>
     <div id="p-usage-advice" style="display:none;font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 10px;margin:-6px 0 12px"></div>
     <div class="form-group"><label>VERPAKKINGSEENHEID <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— bestellen in veelvouden hiervan</span></label><input id="p-pack" type="number" min="0.01" step="0.01" placeholder="bv. 10"></div>
+    <div class="form-group" id="p-refill-group"><label>AANVUL-EENHEID (BUS) <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— kleinste hoeveelheid die van magazijn naar bus gaat (kan 5 L, koker 1); leeg = 1</span></label><input id="p-refill" type="number" min="0.01" step="0.01" placeholder="bv. 5"></div>
     <div class="form-group"><label>PRIJS PER EENHEID (€)</label><input id="p-price" type="number" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>LEVERANCIER</label><select id="p-supplier"></select></div>
     <div id="p-save-error" class="inline-error" style="display:none"></div>
@@ -882,7 +893,10 @@ const CHANGELOG_HTML = `
   • <strong>Kleur zichtbaar bij Bus aanvullen</strong>: de aanvullijst toont nu de kleurcode onder de productnaam, zodat drie keer "Kit" niet meer op elkaar lijkt.<br><br>
   • <strong>Streef aanpassen tijdens aanvullen</strong> (eigenaar): per regel kun je de streefvoorraad direct wijzigen; het aanvul-aantal rekent meteen mee. Met ✕ zet je de streef op 0 en verdwijnt het product uit de aanvullijst van die bus. Terughalen kan via Instellingen → Bussen beheren → Streef vastleggen.<br><br>
   • <strong>Streefwijziging in de geschiedenis</strong>: elke aanpassing staat als "📌 Streef Bus 25: 6 → 4" bij het product, met naam en datum. De voorraad verandert daar niet door.<br><br>
+  • <strong>Geen halve kokers meer</strong>: nieuw veld <strong>Aanvul-eenheid</strong> bij ✏️ Bewerken — de kleinste hoeveelheid die fysiek van magazijn naar bus gaat (kan van 5 liter, koker van 1). Bus aanvullen rondt het tekort daarop af: tekort 0,5 koker → 1 koker; tekort 3,5 liter → 5 liter. De lijst laat zien wat de bus daarna heeft ("→ wordt 6,5"). Niet ingevuld = 1. Dit is bewust een apart veld naast Verpakkingseenheid, want die staat bij sommige producten op de doosinhoud.<br><br>
+  • <strong>Aangebroken verpakking</strong>: ligt er in het magazijn alleen nog een aangebroken kan, dan stelt de app 0 voor met een waarschuwing, en kun je met "Toch meegeven" alsnog die restant meegeven.<br><br>
   • De knop heet nu "N producten aanvullen naar …" zodat je ziet hoeveel regels er geboekt worden. Bjorn, Max en Jens zien dezelfde lijst (met kleur) en vullen aan zoals voorheen.<br><br>
+  <em>Let op (eigenaar):</em> voor Aanvul-eenheid is een eenmalige SQL-migratie nodig (kolom <code>refill_unit</code> op products). Zonder migratie blijft het veld verborgen en rekent de app met eenheid 1.<br><br>
   <em>Eerder (v2.18.3):</em> tellen wat ertoe doet:<br><br>
   • <strong>Telling op "🎯 Actief"</strong>: bij het starten van een telling kun je naast een categorie nu ook "🎯 Actief" kiezen — alleen producten met een minimumvoorraad. Zo tel je de 130 producten die bewegen in plaats van alle 700.<br><br>
   • <strong>Herstel</strong>: de titel van een telling toonde sinds v2.16.0 "Correctie" in plaats van bijvoorbeeld "🏠 Magazijn · Afplakmateriaal". Tellen en boeken werkte wel goed; alleen het etiket was fout.<br><br>
@@ -1244,8 +1258,12 @@ const FULL_EVERY_MS = 60000;  // minstens eens per minuut alsnog alles ophalen
 
 // Mappers gedeeld door beide rondes — één plek, zodat de lichte ronde nooit
 // uit de pas kan lopen met de volledige.
+// v2.19.0: staat de kolom refill_unit al in de database? Bepaald uit de eerste
+// productregel die binnenkomt. Nee → veld verbergen, nooit meesturen, eenheid 1.
+let refillUnitColumnAvailable = false;
 function mapProductRow(r) {
-  return {id:r.id,name:r.name,cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,adviceReviewedMin:(r.advice_reviewed_min===null||r.advice_reviewed_min===undefined)?null:Number(r.advice_reviewed_min),adviceReviewedAt:r.advice_reviewed_at||null,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
+  if(r && Object.prototype.hasOwnProperty.call(r,'refill_unit')) refillUnitColumnAvailable = true;
+  return {id:r.id,name:r.name,refillUnit:(r.refill_unit===null||r.refill_unit===undefined)?null:(Number(r.refill_unit)||null),cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,adviceReviewedMin:(r.advice_reviewed_min===null||r.advice_reviewed_min===undefined)?null:Number(r.advice_reviewed_min),adviceReviewedAt:r.advice_reviewed_at||null,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
 }
 function mapStagedRow(r) { return {id:r.id,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty)||0,locationId:r.location_id||null,color:r.color_code||'',note:r.note||'',createdBy:r.created_by||'',createdAt:r.created_at||'',status:r.status||'open'}; }
 function mapHistoryRow(r) {
@@ -1443,6 +1461,11 @@ function getBusTarget(productId, busId) {
 }
 // Lijst met aanvulregels voor een bus: producten met streef > huidige busvoorraad.
 // magazijn = wat er in het magazijn ligt; aanvullen = min(tekort, magazijn).
+// v2.19.0: aanvullen in hele aanvul-eenheden (refill_unit; leeg = 1). Een halve
+// koker of 3,5 liter uit een kan van 5 kun je niet verplaatsen.
+function refillUnitOf(p) { return (p && p.refillUnit>0) ? p.refillUnit : 1; }
+function roundQ(v) { return Math.round(v*1000)/1000; }
+let busRefillOverride = {};   // productId → aantal (sessie; "Toch meegeven" bij aangebroken verpakking)
 function busRefillList(busId) {
   return (db.busTargets||[])
     .filter(t=>t.busId===busId && t.target>0)
@@ -1450,11 +1473,18 @@ function busRefillList(busId) {
       const p=db.products.find(x=>x.id===t.productId);
       if(!p) return null;
       const huidig=getBusQty(t.productId, busId);
-      const tekort=Math.round((t.target-huidig)*1000)/1000;
+      const tekort=roundQ(t.target-huidig);
       const magazijn=p.qty;
-      const aanvullen=Math.max(0, Math.min(tekort, magazijn));
-      return { product:p, target:t.target, huidig, tekort, magazijn, aanvullen,
-               tekortMagazijn: tekort>magazijn };
+      const eenheid=refillUnitOf(p);
+      const nodig=tekort>0 ? roundQ(Math.ceil(roundQ(tekort/eenheid))*eenheid) : 0;   // afgerond naar boven op hele eenheden
+      const hele=roundQ(Math.floor(roundQ(magazijn/eenheid))*eenheid);               // hele eenheden in magazijn
+      const alleenAangebroken = tekort>0 && hele<=0 && magazijn>0;
+      let aanvullen=Math.max(0, Math.min(nodig, hele));
+      let override=false;
+      if(busRefillOverride[p.id]!=null) { aanvullen=Math.max(0, Math.min(busRefillOverride[p.id], magazijn)); override=true; }
+      return { product:p, target:t.target, huidig, tekort, magazijn, eenheid, nodig, hele, aanvullen, override,
+               alleenAangebroken, na: roundQ(huidig+aanvullen),
+               tekortMagazijn: nodig>hele };
     })
     .filter(r=>r && r.tekort>0)
     .sort((a,b)=>a.product.name.localeCompare(b.product.name,'nl',{numeric:true,sensitivity:'base'}));
@@ -2683,13 +2713,15 @@ function openProductModal(editId=null) {
     document.getElementById('p-min').value=p.min;
     document.getElementById('p-target').value=p.target||p.min||'';
     document.getElementById('p-pack').value=p.pack||1;
+    document.getElementById('p-refill').value=p.refillUnit||'';
     document.getElementById('p-price').value=p.price;
     document.getElementById('p-supplier').value=p.supplier;
     renderUsageAdvice(p);
   } else {
-    ['p-name','p-factuur-naam','p-color-codes','p-barcode','p-qty','p-min','p-target','p-pack','p-price'].forEach(id=>document.getElementById(id).value='');
+    ['p-name','p-factuur-naam','p-color-codes','p-barcode','p-qty','p-min','p-target','p-pack','p-refill','p-price'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('p-usage-advice').style.display='none';
   }
+  const rg=document.getElementById('p-refill-group'); if(rg) rg.style.display=refillUnitColumnAvailable?'':'none';
   hideSaveError();
   openModal('modal-product');
 }
@@ -2737,6 +2769,10 @@ async function saveProduct(btn) {
     factuur_naam:document.getElementById('p-factuur-naam').value.trim()||null,
     color_codes:colorCodes
   };
+  if(refillUnitColumnAvailable) {
+    const rv=parseFloat(document.getElementById('p-refill').value);
+    data.refill_unit = (Number.isFinite(rv) && rv>0) ? rv : null;
+  }
   setSyncing('syncing');
   // Tijdslimiet zit sinds v2.13.0 centraal in netFetch (NET_TIMEOUT_MS)
   // v2.16.0: het aantal-veld direct opslaan liet geen spoor na in de geschiedenis.
@@ -3469,6 +3505,7 @@ let busRefillTarget=null;
 
 function openBusRefill(busId) {
   busRefillTarget=busId;
+  busRefillOverride={};
   renderBusRefill();
   openModal('modal-bus-refill');
 }
@@ -3498,7 +3535,16 @@ function renderBusRefill() {
   const owner=isCurrentUserOwner();
   intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}${owner?' <span style="color:var(--muted)">Als eigenaar kun je hier de streef per product aanpassen; ✕ zet de streef op 0.</span>':''}`;
   document.getElementById('bus-refill-list').innerHTML=list.map(r=>{
-    const kortBadge=r.tekortMagazijn?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ magazijn ${r.magazijn}</span>`:'';
+    const kortBadge=r.alleenAangebroken
+      ?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ alleen aangebroken verpakking (${r.magazijn} ${r.product.unit}) in magazijn</span>`
+      :r.tekortMagazijn?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ magazijn ${r.magazijn}${r.eenheid!==1?` (${r.hele} in hele eenheden van ${r.eenheid})`:''}</span>`:'';
+    const wordtTxt=r.aanvullen>0&&r.na>r.target?`<span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace"> → wordt ${r.na}</span>`:'';
+    const eenheidTxt=r.eenheid!==1?` · per ${r.eenheid}`:'';
+    const tochBtn=r.alleenAangebroken
+      ?(r.override
+        ?`<button type="button" data-refill-undo="${r.product.id}" onclick="setRefillOverride(${r.product.id}, null)" style="font-size:11px;padding:3px 8px;margin-top:4px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--muted)">↩ Toch niet meegeven</button>`
+        :`<button type="button" data-refill-toch="${r.product.id}" onclick="setRefillOverride(${r.product.id}, ${r.magazijn})" style="font-size:11px;padding:3px 8px;margin-top:4px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text)">Toch ${r.magazijn} ${r.product.unit} meegeven</button>`)
+      :'';
     const codes=(Array.isArray(r.product.color_codes)&&r.product.color_codes.length)
       ?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${r.product.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${c}</span>`).join('')}</div>`
       :'';
@@ -3512,12 +3558,13 @@ function renderBusRefill() {
       <div style="min-width:0">
         <div style="font-weight:500;font-size:14px">${r.product.name}</div>
         ${codes}
-        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">nu ${r.huidig} · ${streefTxt} · tekort ${r.tekort} ${kortBadge}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">nu ${r.huidig} · ${streefTxt} · tekort ${r.tekort}${eenheidTxt} ${kortBadge}</div>
+        ${tochBtn}
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <div style="text-align:right">
           <div style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${r.aanvullen>0?'var(--green)':'var(--muted)'}">+${r.aanvullen}</div>
-          <div style="font-size:10px;color:var(--muted)">${r.product.unit}</div>
+          <div style="font-size:10px;color:var(--muted)">${r.product.unit}${wordtTxt}</div>
         </div>
         ${removeBtn}
       </div>
@@ -3530,6 +3577,13 @@ function renderBusRefill() {
   if(totaalAanvullen<=0) {
     intro.innerHTML+='<br><span style="color:var(--accent)">Het magazijn heeft niets om aan te vullen.</span>';
   }
+}
+
+// v2.19.0: "Toch meegeven" bij alleen aangebroken verpakking — eenmalig voor deze
+// aanvulling, iedereen mag dit (het is een fysieke keuze, geen streefwijziging).
+function setRefillOverride(productId, qty) {
+  if(qty==null) delete busRefillOverride[productId]; else busRefillOverride[productId]=qty;
+  renderBusRefill();
 }
 
 // v2.19.0: eigenaar past de streef van een product voor deze bus aan vanuit het
