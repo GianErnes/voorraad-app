@@ -186,6 +186,18 @@
   ║    └─ FIX: histCountLabel(h) uit v2.16.0 overschreef countLabel(c) van   ║
   ║       de Telmodus (v2.14.0) → telling-titels toonden "Correctie".    ║
   ║       Geschiedenis-variant heet nu histCountLabel(h).                ║
+  ║  • v2.19.0 — Bus aanvullen: kleur zichtbaar + streef aanpassen        ║
+  ║    └─ renderBusRefill: kleurcode-chips onder productnaam (zoals      ║
+  ║       elders); knop "N producten aanvullen naar <bus>"               ║
+  ║    └─ Eigenaar: per regel streef-input (step 0.125) + ✕ (streef 0,   ║
+  ║       met confirm). updateBusTarget(): PATCH bus_targets.target_qty, ║
+  ║       history 'count' qty 0 note "Streef <bus>: a → b" (location_id  ║
+  ║       = bus), lokaal db.busTargets bijwerken + opnieuw renderen.     ║
+  ║       Terugzetten na schrappen: Instellingen → Streef vastleggen.    ║
+  ║    └─ isTargetRow(h) naast isPriceRow(h); label 📌 Streef; geen qty  ║
+  ║       in dashboard/product-detail; openHistoryEdit: eigen melding    ║
+  ║       voor prijs-/streefregels (geen "Telcorrectie").                ║
+  ║    └─ Niet-eigenaren: lijst alleen-lezen, aanvullen zoals voorheen.  ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -829,8 +841,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.18.3';
-const BUILD_DATE = '2026-09-30';
+const APP_VERSION = '2.19.0';
+const BUILD_DATE = '2026-10-01';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -866,7 +878,12 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — tellen wat ertoe doet:<br><br>
+  <strong>v${APP_VERSION}</strong> — bus aanvullen op maat:<br><br>
+  • <strong>Kleur zichtbaar bij Bus aanvullen</strong>: de aanvullijst toont nu de kleurcode onder de productnaam, zodat drie keer "Kit" niet meer op elkaar lijkt.<br><br>
+  • <strong>Streef aanpassen tijdens aanvullen</strong> (eigenaar): per regel kun je de streefvoorraad direct wijzigen; het aanvul-aantal rekent meteen mee. Met ✕ zet je de streef op 0 en verdwijnt het product uit de aanvullijst van die bus. Terughalen kan via Instellingen → Bussen beheren → Streef vastleggen.<br><br>
+  • <strong>Streefwijziging in de geschiedenis</strong>: elke aanpassing staat als "📌 Streef Bus 25: 6 → 4" bij het product, met naam en datum. De voorraad verandert daar niet door.<br><br>
+  • De knop heet nu "N producten aanvullen naar …" zodat je ziet hoeveel regels er geboekt worden. Bjorn, Max en Jens zien dezelfde lijst (met kleur) en vullen aan zoals voorheen.<br><br>
+  <em>Eerder (v2.18.3):</em> tellen wat ertoe doet:<br><br>
   • <strong>Telling op "🎯 Actief"</strong>: bij het starten van een telling kun je naast een categorie nu ook "🎯 Actief" kiezen — alleen producten met een minimumvoorraad. Zo tel je de 130 producten die bewegen in plaats van alle 700.<br><br>
   • <strong>Herstel</strong>: de titel van een telling toonde sinds v2.16.0 "Correctie" in plaats van bijvoorbeeld "🏠 Magazijn · Afplakmateriaal". Tellen en boeken werkte wel goed; alleen het etiket was fout.<br><br>
   <em>Eerder (v2.18.2):</em> fout in het verbruiksvoorstel hersteld:<br><br>
@@ -1696,8 +1713,8 @@ function renderDashboard() {
     recent.map(h=>{
       const prod=db.products.find(p=>p.id===h.productId);
       const proj=h.projectId?db.projects.find(p=>p.id===h.projectId):null;
-      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':histCountLabel(h)):'Besteld';
-      const qtyTxt=isPriceRow(h)?'':`${h.qty}× `;
+      const label=h.type==='out'?'Uitgegeven':h.type==='in'?'Retour':h.type==='transfer'?'Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':isTargetRow(h)?'📌 Streef':histCountLabel(h)):'Besteld';
+      const qtyTxt=isInfoRow(h)?'':`${h.qty}× `;
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
         : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
@@ -3478,25 +3495,80 @@ function renderBusRefill() {
   }
 
   const totaalKort=list.some(r=>r.tekortMagazijn);
-  intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}`;
+  const owner=isCurrentUserOwner();
+  intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}${owner?' <span style="color:var(--muted)">Als eigenaar kun je hier de streef per product aanpassen; ✕ zet de streef op 0.</span>':''}`;
   document.getElementById('bus-refill-list').innerHTML=list.map(r=>{
     const kortBadge=r.tekortMagazijn?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ magazijn ${r.magazijn}</span>`:'';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+    const codes=(Array.isArray(r.product.color_codes)&&r.product.color_codes.length)
+      ?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${r.product.color_codes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${c}</span>`).join('')}</div>`
+      :'';
+    const streefTxt=owner
+      ?`<span style="display:inline-flex;align-items:center;gap:4px">streef <input type="number" inputmode="decimal" step="0.125" min="0" value="${r.target}" data-refill-target="${r.product.id}" onchange="updateBusTarget(${busId}, ${r.product.id}, this.value, this)" style="width:58px;padding:2px 4px;font-size:12px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);border-radius:4px;text-align:right"></span>`
+      :`streef ${r.target}`;
+    const removeBtn=owner
+      ?`<button type="button" data-refill-remove="${r.product.id}" onclick="updateBusTarget(${busId}, ${r.product.id}, 0, this)" title="Niet meer aanvullen in ${locName(busId)}" style="border:none;background:none;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;cursor:pointer">✕</button>`
+      :'';
+    return `<div data-refill-row="${r.product.id}" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="min-width:0">
         <div style="font-weight:500;font-size:14px">${r.product.name}</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">nu ${r.huidig} · streef ${r.target} · tekort ${r.tekort} ${kortBadge}</div>
+        ${codes}
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">nu ${r.huidig} · ${streefTxt} · tekort ${r.tekort} ${kortBadge}</div>
       </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${r.aanvullen>0?'var(--green)':'var(--muted)'}">+${r.aanvullen}</div>
-        <div style="font-size:10px;color:var(--muted)">${r.product.unit}</div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <div style="text-align:right">
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${r.aanvullen>0?'var(--green)':'var(--muted)'}">+${r.aanvullen}</div>
+          <div style="font-size:10px;color:var(--muted)">${r.product.unit}</div>
+        </div>
+        ${removeBtn}
       </div>
     </div>`;
   }).join('');
   const totaalAanvullen=list.reduce((s,r)=>s+r.aanvullen,0);
+  const aantalRegels=list.filter(r=>r.aanvullen>0).length;
   btn.style.display=totaalAanvullen>0?'':'none';
-  btn.textContent=`✓ Alles aanvullen naar ${locName(busId)}`;
+  btn.textContent=`✓ ${aantalRegels} ${aantalRegels===1?'product':'producten'} aanvullen naar ${locName(busId)}`;
   if(totaalAanvullen<=0) {
     intro.innerHTML+='<br><span style="color:var(--accent)">Het magazijn heeft niets om aan te vullen.</span>';
+  }
+}
+
+// v2.19.0: eigenaar past de streef van een product voor deze bus aan vanuit het
+// aanvulscherm. 0 = product niet meer aanvullen in deze bus (regel verdwijnt).
+// Schrijft PATCH bus_targets + informatieve history-regel (qty 0, geen voorraadeffect).
+async function updateBusTarget(busId, productId, rawValue, el) {
+  // Eén verwerking per element: na afloop wordt de lijst opnieuw gerenderd (verse elementen),
+  // dus een tweede change/blur op hetzelfde (oude) element mag niets meer doen.
+  if(el && el.dataset.busy) return;
+  if(el) el.dataset.busy='1';
+  if(!isCurrentUserOwner()) { alert('Alleen eigenaren kunnen de streefvoorraad aanpassen.'); renderBusRefill(); return; }
+  const row=(db.busTargets||[]).find(t=>t.busId===busId && t.productId===productId);
+  const p=db.products.find(x=>x.id===productId);
+  if(!row || !p) { renderBusRefill(); return; }
+  const oud=row.target;
+  let nieuw=Number(String(rawValue).replace(',','.'));
+  if(!Number.isFinite(nieuw) || nieuw<0) { alert('Vul een geldig aantal in (0 of hoger).'); renderBusRefill(); return; }
+  nieuw=Math.round(nieuw*1000)/1000;
+  if(nieuw===oud) { renderBusRefill(); return; }
+  const kleur=(Array.isArray(p.color_codes)&&p.color_codes.length)?' '+p.color_codes.join(', '):'';
+  if(nieuw===0) {
+    if(!confirm(`${p.name}${kleur} niet meer aanvullen in ${locName(busId)}?\n\nDe streef gaat van ${oud} naar 0 en het product verdwijnt uit deze aanvullijst. Terugzetten kan via Instellingen → Bussen beheren → Streef vastleggen.`)) { renderBusRefill(); return; }
+  }
+  if(el) el.disabled=true;
+  setSyncing('syncing');
+  try {
+    await dbPatch('bus_targets', `id=eq.${row.id}`, {target_qty:nieuw});
+    await dbPost('history', {type:'count', product_id:productId, qty:0, note:`Streef ${locName(busId)}: ${oud} → ${nieuw}`, date:today(), employee_name:getCurrentEmployee()||null, location_id:busId});
+    // Tijdens de awaits kan de periodieke sync db.busTargets vervangen hebben door
+    // verse objecten — daarom de regel opnieuw opzoeken in plaats van `row` te gebruiken.
+    const actueel=(db.busTargets||[]).find(t=>t.busId===busId && t.productId===productId);
+    if(actueel) actueel.target=nieuw;
+    renderBusRefill();
+    loadSync();
+  } catch(e) {
+    console.error(e);
+    setSyncing('error');
+    alert('Streef aanpassen is niet gelukt: '+(e&&e.message?e.message:e)+'\n\nControleer de verbinding en probeer het opnieuw.');
+    renderBusRefill();
   }
 }
 
@@ -3547,12 +3619,12 @@ function openProductDetail(id, limit) {
     <div class="section-hdr">Geschiedenis</div>
     ${hist.length?hist.map(h=>{
       const proj=h.projectId?db.projects.find(x=>x.id===h.projectId):null;
-      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':'🔢 '+histCountLabel(h)):'📦 Ontvangen';
+      const label=h.type==='out'?'▼ Uit':h.type==='in'?'▲ Retour':h.type==='transfer'?'🔁 Verplaatst':h.type==='count'?(isPriceRow(h)?'💶 Prijs':isTargetRow(h)?'📌 Streef':'🔢 '+histCountLabel(h)):'📦 Ontvangen';
       const route=h.type==='transfer'?` (${locName(h.locationId)} → ${locName(h.locationToId)})`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label}${isPriceRow(h)?'':' '+h.qty+'×'}${proj?' → '+proj.name:''}${route}</div>
+        <div><div class="hist-text">${label}${isInfoRow(h)?'':' '+h.qty+'×'}${proj?' → '+proj.name:''}${route}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}
     ${(histMore>0||limit>PRODUCT_HIST_DEFAULT)?`<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
@@ -4239,7 +4311,11 @@ async function deleteEmployee(id) {
 // handmatige correctie (Bewerken, beginvoorraad, beginstand vastleggen).
 // v2.17.0: óf een prijswijziging (qty 0, note "Prijs €a → €b") — geen voorraadeffect.
 function isPriceRow(h) { return h.type==='count' && /^Prijs /.test(h.note||''); }
-function histCountLabel(h) { return isPriceRow(h) ? 'Prijs' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
+// v2.19.0: streefwijziging (qty 0, note "Streef <bus>: a → b") — geen voorraadeffect.
+function isTargetRow(h) { return h.type==='count' && /^Streef /.test(h.note||''); }
+// Regels zonder voorraadeffect (prijs, streef): geen "N×" tonen, niet als telcorrectie behandelen.
+function isInfoRow(h) { return isPriceRow(h) || isTargetRow(h); }
+function histCountLabel(h) { return isPriceRow(h) ? 'Prijs' : isTargetRow(h) ? 'Streef' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
 function fmtPrice(v) { return (Math.round((Number(v)||0)*100)/100).toFixed(2).replace('.',','); }
 function priceHistoryRow(productId, oldPrice, newPrice) {
   return {type:'count',product_id:productId,qty:0,note:`Prijs €${fmtPrice(oldPrice)} → €${fmtPrice(newPrice)}`,date:today(),employee_name:getCurrentEmployee()||null,location_id:null};
@@ -4261,6 +4337,11 @@ function openHistoryEdit(histId) {
   const h=db.history.find(x=>x.id===histId); if(!h) return;
   // v2.14.0: telcorrecties zijn een vastlegging van een telling, niet bewerkbaar.
   // Klopt de stand niet, doe dan een nieuwe telling of een snelle aanpassing.
+  if(isInfoRow(h)) {
+    const prod=db.products.find(p=>p.id===h.productId);
+    alert(`${isPriceRow(h)?'Prijswijziging':'Streefwijziging'}: ${prod?prod.name:'?'}\n${h.note||''}\n\nDeze regel is alleen ter informatie en heeft geen voorraadeffect; hij kan niet bewerkt of verwijderd worden.`);
+    return;
+  }
   if(h.type==='count') {
     const prod=db.products.find(p=>p.id===h.productId);
     alert(`Telcorrectie: ${h.qty>0?'+':''}${h.qty}× ${prod?prod.name:'?'}\n${h.note||''}\n\nEen telcorrectie kun je niet bewerken of verwijderen. Klopt de stand niet, tel dan opnieuw of pas de voorraad aan in de voorraadlijst.`);
