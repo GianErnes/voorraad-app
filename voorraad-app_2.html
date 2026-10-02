@@ -6,7 +6,7 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.20.0 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.21.0 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
   ║  Laatst gewijzigd: 2026-09-30                                        ║
@@ -228,6 +228,28 @@
   ║       als het scrollgebied > 1,5× de hoogte. Doel = open .modal als  ║
   ║       er een modal open is, anders window. Luistert op scroll        ║
   ║       (capture) + resize + MutationObserver; isScrollNavNeeded().    ║
+  ║  • v2.21.0 — Verbruiksmateriaal: tellen bij Bus aanvullen            ║
+  ║    └─ products.consumable boolean NOT NULL DEFAULT false (SQL-       ║
+  ║       MIGRATIE!). Vinkje in ✏️ Bewerken (eigenaar). Kolom ontbreekt  ║
+  ║       (consumableColumnAvailable=false) → vinkje verborgen, niet in  ║
+  ║       PATCH/POST, gedrag als voorheen.                               ║
+  ║    └─ Probleem: sponzen/doekjes/kit slijten of raken op ZONDER       ║
+  ║       project. Nooit afgeboekt → bus staat vol met spookvoorraad en  ║
+  ║       het magazijn vult nooit aan.                                   ║
+  ║    └─ busRefillList: verbruiksproducten met streef>0 staan ALTIJD in ║
+  ║       de aanvullijst (ook zonder tekort), bovenaan, met telveld      ║
+  ║       "nog in bus" (busRefillCount, sessie; leeg = systeemstand).    ║
+  ║       verbruik = systeem − geteld; tekort en aanvullen rekenen met   ║
+  ║       de getelde stand. Badge "Aanvullen (N)" telt alleen tekort>0.  ║
+  ║    └─ confirmBusRefill: eerst verbruik boeken — bus −verbruik,       ║
+  ║       history 'out' ZONDER project, location_id=bus, note            ║
+  ║       "Verbruikt (telling <bus>): a → b". Meer geteld dan systeem →  ║
+  ║       'in' met note "Telling <bus>: a → b (meer aanwezig)". Daarna   ║
+  ║       de gewone verplaatsing magazijn→bus.                           ║
+  ║    └─ Deze 'out'-regels tellen WEL mee in usageStats (geen manual-   ║
+  ║       correction-prefix) → min/streef-voorstel klopt voor sponzen.  ║
+  ║    └─ isConsumptionRow(h): geschiedenis toont "→ Algemeen verbruik"  ║
+  ║       i.p.v. "⚠️ geen project". Geen pseudo-project in de DB.       ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -312,6 +334,8 @@
   input:focus,select:focus{border-color:var(--accent2);}
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
   input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+  /* v2.21.0: de algemene input-stijl (appearance:none, padding) maakt een checkbox onzichtbaar */
+  input[type=checkbox]{-webkit-appearance:checkbox;appearance:checkbox;width:18px;height:18px;padding:0;border-radius:4px;accent-color:var(--accent);background:none;}
   select option{background:var(--surface2);}
   /* Scanknoppen weg op apparaten zonder aanraakscherm (iMac/desktop) — v2.9.10 */
   body.no-touch .scan-btn{display:none;}
@@ -593,6 +617,7 @@
     <div id="p-usage-advice" style="display:none;font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 10px;margin:-6px 0 12px"></div>
     <div class="form-group"><label>VERPAKKINGSEENHEID <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— bestellen in veelvouden hiervan</span></label><input id="p-pack" type="number" min="0.01" step="0.01" placeholder="bv. 10"></div>
     <div class="form-group" id="p-refill-group"><label>AANVUL-EENHEID (BUS) <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— kleinste hoeveelheid die van magazijn naar bus gaat (kan 5 L, koker 1); leeg = 1</span></label><input id="p-refill" type="number" min="0.01" step="0.01" placeholder="bv. 5"></div>
+    <div class="form-group" id="p-consumable-group"><label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer"><input type="checkbox" id="p-consumable" style="width:18px;height:18px;margin:1px 0 0;flex-shrink:0"><span>VERBRUIKSMATERIAAL <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— slijt of raakt op zonder project (sponzen, doekjes, kit). Bij Bus aanvullen wordt gevraagd hoeveel er nog ligt; het verschil wordt afgeboekt als algemeen verbruik.</span></span></label></div>
     <div class="form-group"><label>PRIJS PER EENHEID (€)</label><input id="p-price" type="number" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>LEVERANCIER</label><select id="p-supplier"></select></div>
     <div id="p-save-error" class="inline-error" style="display:none"></div>
@@ -890,7 +915,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.20.0';
+const APP_VERSION = '2.21.0';
 const BUILD_DATE = '2026-10-02';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -927,7 +952,13 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — de standaarduitrusting van een bus beheren:<br><br>
+  <strong>v${APP_VERSION}</strong> — verbruiksmateriaal dat gewoon op raakt:<br><br>
+  • <strong>Verbruiksmateriaal</strong>: sponzen, reinigingsdoekjes en kit worden niet op een project geboekt maar slijten of raken op. Tot nu toe bleven ze in de app eeuwig in de bus staan. Nieuw vinkje <strong>Verbruiksmateriaal</strong> bij ✏️ Bewerken (eigenaar).<br><br>
+  • <strong>Tellen bij Bus aanvullen</strong>: voor producten met dat vinkje vraagt de aanvullijst nu eerst <strong>"nog in bus"</strong> — hoeveel liggen er écht nog. Het verschil met wat de app dacht wordt afgeboekt als <strong>algemeen verbruik</strong>, en daarna wordt de bus zoals gewoonlijk aangevuld tot de streef. Zo zakt het magazijn mee en komen sponzen op tijd op de bestellijst. Niets ingevuld = niets verbruikt.<br><br>
+  • Een aangebroken kittube telt gewoon als 1 tot hij leeg of uitgehard is. Tel je méér dan de app dacht, dan wordt dat als correctie bijgeboekt.<br><br>
+  • In de geschiedenis staan deze regels als <strong>▼ Uit → Algemeen verbruik</strong> met "Verbruikt (telling Bus 25): 10 → 4". Ze tellen mee in het verbruiksvoorstel voor min en streef.<br><br>
+  <em>Let op (eigenaar):</em> eenmalige SQL-migratie nodig (kolom <code>consumable</code> op products). Zonder migratie blijft het vinkje verborgen en werkt aanvullen als voorheen.<br><br>
+  <em>Eerder (v2.20.0):</em> de standaarduitrusting van een bus beheren:<br><br>
   • <strong>📋 Streef bewerken per bus</strong> (Instellingen → Bussen beheren): één scherm met álle producten die in een bus horen, ook de producten die nu op voorraad zijn. Per regel: wat er in de bus ligt, de streef als invoerveld, en ✕ om het product uit de lijst te halen. Met "+ Product toevoegen" zoek je een product op naam of kleur en zet je het erbij. Elke wijziging komt als "📌 Streef Bus 25: a → b" in de geschiedenis.<br><br>
   • <strong>Voorraadcontrole</strong>: de knop "Alle … beginstanden vastleggen" staat nu bovenaan, direct onder de uitleg — niet meer onder honderden kaartjes. De lijst toont standaard de 20 grootste verschillen; "Toon alle" laat de rest zien.<br><br>
   • <strong>Snel naar boven of beneden</strong>: op lange pagina's (Voorraad, Instellingen) en in lange schermen verschijnen linksonder twee knoppen ⤒ en ⤓.<br><br>
@@ -1303,9 +1334,13 @@ const FULL_EVERY_MS = 60000;  // minstens eens per minuut alsnog alles ophalen
 // v2.19.0: staat de kolom refill_unit al in de database? Bepaald uit de eerste
 // productregel die binnenkomt. Nee → veld verbergen, nooit meesturen, eenheid 1.
 let refillUnitColumnAvailable = false;
+// v2.21.0: idem voor products.consumable (verbruiksmateriaal). Ontbreekt de kolom
+// → vinkje verborgen, nooit meesturen, alle producten gedragen zich als voorheen.
+let consumableColumnAvailable = false;
 function mapProductRow(r) {
   if(r && Object.prototype.hasOwnProperty.call(r,'refill_unit')) refillUnitColumnAvailable = true;
-  return {id:r.id,name:r.name,refillUnit:(r.refill_unit===null||r.refill_unit===undefined)?null:(Number(r.refill_unit)||null),cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,adviceReviewedMin:(r.advice_reviewed_min===null||r.advice_reviewed_min===undefined)?null:Number(r.advice_reviewed_min),adviceReviewedAt:r.advice_reviewed_at||null,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
+  if(r && Object.prototype.hasOwnProperty.call(r,'consumable')) consumableColumnAvailable = true;
+  return {id:r.id,name:r.name,consumable:r.consumable===true,refillUnit:(r.refill_unit===null||r.refill_unit===undefined)?null:(Number(r.refill_unit)||null),cat:r.cat||'',unit:r.unit||'stuk',qty:Number(r.qty)||0,adviceReviewedMin:(r.advice_reviewed_min===null||r.advice_reviewed_min===undefined)?null:Number(r.advice_reviewed_min),adviceReviewedAt:r.advice_reviewed_at||null,min:Number(r.min)||0,target:r.target!=null?Number(r.target):Number(r.min)||0,pack:Number(r.pack)||1,price:parseFloat(String(r.price).replace(',','.'))||0,supplier:r.supplier_id,barcode:r.barcode||null,factuur_naam:r.factuur_naam||'',color_codes:Array.isArray(r.color_codes)?r.color_codes:[],last_ordered_at:r.last_ordered_at||null,ordered_qty:Number(r.ordered_qty)||0,ordered_project_id:r.ordered_project_id||null};
 }
 function mapStagedRow(r) { return {id:r.id,productId:r.product_id,projectId:r.project_id,qty:Number(r.qty)||0,locationId:r.location_id||null,color:r.color_code||'',note:r.note||'',createdBy:r.created_by||'',createdAt:r.created_at||'',status:r.status||'open'}; }
 function mapHistoryRow(r) {
@@ -1508,13 +1543,23 @@ function getBusTarget(productId, busId) {
 function refillUnitOf(p) { return (p && p.refillUnit>0) ? p.refillUnit : 1; }
 function roundQ(v) { return Math.round(v*1000)/1000; }
 let busRefillOverride = {};   // productId → aantal (sessie; "Toch meegeven" bij aangebroken verpakking)
+// v2.21.0: verbruiksmateriaal (p.consumable) staat ALTIJD in de aanvullijst zolang
+// er een streef is, ook zonder tekort: de bus moet eerst geteld worden. busRefillCount
+// = productId → getelde stand (sessie; ontbreekt = systeemstand, dus geen verbruik).
+// verbruik = systeem − geteld (>0 = afboeken, <0 = meer aanwezig → bijboeken).
+let busRefillCount = {};
+function isConsumable(p) { return !!(p && p.consumable); }
 function busRefillList(busId) {
   return (db.busTargets||[])
     .filter(t=>t.busId===busId && t.target>0)
     .map(t=>{
       const p=db.products.find(x=>x.id===t.productId);
       if(!p) return null;
-      const huidig=getBusQty(t.productId, busId);
+      const systeem=getBusQty(t.productId, busId);
+      const telling=isConsumable(p);
+      const geteld=(telling && busRefillCount[p.id]!=null) ? Math.max(0, roundQ(busRefillCount[p.id])) : null;
+      const huidig=geteld!=null ? geteld : systeem;        // stand waarmee tekort/aanvullen rekenen
+      const verbruik=geteld!=null ? roundQ(systeem-geteld) : 0;
       const tekort=roundQ(t.target-huidig);
       const magazijn=p.qty;
       const eenheid=refillUnitOf(p);
@@ -1524,13 +1569,15 @@ function busRefillList(busId) {
       let aanvullen=Math.max(0, Math.min(nodig, hele));
       let override=false;
       if(busRefillOverride[p.id]!=null) { aanvullen=Math.max(0, Math.min(busRefillOverride[p.id], magazijn)); override=true; }
-      return { product:p, target:t.target, huidig, tekort, magazijn, eenheid, nodig, hele, aanvullen, override,
+      return { product:p, target:t.target, huidig, systeem, geteld, verbruik, telling, tekort, magazijn, eenheid, nodig, hele, aanvullen, override,
                alleenAangebroken, na: roundQ(huidig+aanvullen),
                tekortMagazijn: nodig>hele };
     })
-    .filter(r=>r && r.tekort>0)
-    .sort((a,b)=>a.product.name.localeCompare(b.product.name,'nl',{numeric:true,sensitivity:'base'}));
+    .filter(r=>r && (r.tekort>0 || r.telling))
+    .sort((a,b)=>(b.telling-a.telling) || a.product.name.localeCompare(b.product.name,'nl',{numeric:true,sensitivity:'base'}));
 }
+// Regels waar echt iets gebeurt bij bevestigen: aanvullen en/of verbruik boeken.
+function busRefillActionRows(busId) { return busRefillList(busId).filter(r=>r.aanvullen>0 || r.verbruik!==0); }
 // ====================== VERBRUIKSADVIES (v2.18.0) ======================
 // Weekverbruik uit de geschiedenis: uitgiftes (out) min retours (in), ongeacht
 // magazijn of bus — verplaatsingen/tellingen/prijsregels tellen niet mee.
@@ -1789,7 +1836,7 @@ function renderDashboard() {
       const qtyTxt=isInfoRow(h)?'':`${h.qty}× `;
       const projText=h.type==='transfer'
         ? ` <span style="color:var(--muted)">(${locName(h.locationId)} → ${locName(h.locationToId)})</span>`
-        : (proj?' → '+proj.name:(h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
+        : (proj?' → '+proj.name:(isConsumptionRow(h)?' → <span style="color:var(--muted)">🧽 Algemeen verbruik</span>':h.type==='out'?' → <span style="color:var(--red)">⚠️ geen project</span>':''));
       const allCodes=(prod&&Array.isArray(prod.color_codes))?prod.color_codes:[];
       const codes=allCodes.length?` <span style="display:inline-flex;flex-wrap:wrap;gap:3px;margin-left:4px;vertical-align:middle">${allCodes.map(c=>`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--accent);padding:1px 6px;border-radius:4px;color:var(--accent);font-weight:500;letter-spacing:.3px">${c}</span>`).join('')}</span>`:'';
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
@@ -1903,7 +1950,7 @@ function renderStock() {
 
   // Summary-bar: aantal producten + totale waarde van huidige selectie
   const sumBar=document.getElementById('stock-summary-bar');
-  const refill=busMode?busRefillList(activeLocation):[];
+  const refill=busMode?busRefillList(activeLocation).filter(r=>r.tekort>0):[];   // v2.21.0: telregels zonder tekort niet in de badge
   if(prods.length || refill.length || busMode){
     const totalValue=prods.reduce((s,p)=>s+(busMode?getBusQty(p.id,activeLocation):(Number(p.qty)||0))*(Number(p.price)||0),0);
     const zonderPrijs=prods.filter(p=>!Number(p.price)).length;
@@ -2756,14 +2803,17 @@ function openProductModal(editId=null) {
     document.getElementById('p-target').value=p.target||p.min||'';
     document.getElementById('p-pack').value=p.pack||1;
     document.getElementById('p-refill').value=p.refillUnit||'';
+    document.getElementById('p-consumable').checked=!!p.consumable;
     document.getElementById('p-price').value=p.price;
     document.getElementById('p-supplier').value=p.supplier;
     renderUsageAdvice(p);
   } else {
     ['p-name','p-factuur-naam','p-color-codes','p-barcode','p-qty','p-min','p-target','p-pack','p-refill','p-price'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('p-consumable').checked=false;
     document.getElementById('p-usage-advice').style.display='none';
   }
   const rg=document.getElementById('p-refill-group'); if(rg) rg.style.display=refillUnitColumnAvailable?'':'none';
+  const cg=document.getElementById('p-consumable-group'); if(cg) cg.style.display=consumableColumnAvailable?'':'none';
   hideSaveError();
   openModal('modal-product');
 }
@@ -2815,6 +2865,7 @@ async function saveProduct(btn) {
     const rv=parseFloat(document.getElementById('p-refill').value);
     data.refill_unit = (Number.isFinite(rv) && rv>0) ? rv : null;
   }
+  if(consumableColumnAvailable) data.consumable = !!document.getElementById('p-consumable').checked;
   setSyncing('syncing');
   // Tijdslimiet zit sinds v2.13.0 centraal in netFetch (NET_TIMEOUT_MS)
   // v2.16.0: het aantal-veld direct opslaan liet geen spoor na in de geschiedenis.
@@ -3548,6 +3599,7 @@ let busRefillTarget=null;
 function openBusRefill(busId) {
   busRefillTarget=busId;
   busRefillOverride={};
+  busRefillCount={};
   renderBusRefill();
   openModal('modal-bus-refill');
 }
@@ -3574,8 +3626,9 @@ function renderBusRefill() {
   }
 
   const totaalKort=list.some(r=>r.tekortMagazijn);
+  const heeftTelling=list.some(r=>r.telling);
   const owner=isCurrentUserOwner();
-  intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}${owner?' <span style="color:var(--muted)">Als eigenaar kun je hier de streef per product aanpassen; ✕ zet de streef op 0.</span>':''}`;
+  intro.innerHTML=`Aan te vullen tot de streefvoorraad. Dit verplaatst de aantallen van het magazijn naar ${locName(busId)}.${heeftTelling?' <strong>Verbruiksmateriaal</strong> (🧽): vul eerst in hoeveel er nog in de bus ligt — het verschil wordt als algemeen verbruik afgeboekt.':''}${totaalKort?' <span style="color:var(--accent)">⚠ Bij sommige producten is het magazijn ontoereikend — dan wordt aangevuld wat er is.</span>':''}${owner?' <span style="color:var(--muted)">Als eigenaar kun je hier de streef per product aanpassen; ✕ zet de streef op 0.</span>':''}`;
   document.getElementById('bus-refill-list').innerHTML=list.map(r=>{
     const kortBadge=r.alleenAangebroken
       ?`<span style="font-size:10px;color:var(--accent);font-family:'JetBrains Mono',monospace">⚠ alleen aangebroken verpakking (${r.magazijn} ${r.product.unit}) in magazijn</span>`
@@ -3593,6 +3646,13 @@ function renderBusRefill() {
     const streefTxt=owner
       ?`<span style="display:inline-flex;align-items:center;gap:4px">streef <input type="number" inputmode="decimal" step="0.125" min="0" value="${r.target}" data-refill-target="${r.product.id}" onchange="updateBusTarget(${busId}, ${r.product.id}, this.value, this)" style="width:58px;padding:2px 4px;font-size:12px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);border-radius:4px;text-align:right"></span>`
       :`streef ${r.target}`;
+    // v2.21.0: telveld voor verbruiksmateriaal — "nog in bus" i.p.v. alleen de systeemstand
+    const nuTxt=r.telling
+      ?`<span style="display:inline-flex;align-items:center;gap:4px">🧽 nog in bus <input type="number" inputmode="decimal" step="1" min="0" value="${r.geteld!=null?r.geteld:''}" placeholder="${r.systeem}" data-refill-count="${r.product.id}" onchange="setRefillCount(${r.product.id}, this.value)" style="width:58px;padding:2px 4px;font-size:12px;font-family:'JetBrains Mono',monospace;border:1px solid ${r.geteld!=null?'var(--accent)':'var(--border)'};border-radius:4px;text-align:right"></span> <span style="color:var(--muted)">(app: ${r.systeem})</span>`
+      :`nu ${r.huidig}`;
+    const verbruikTxt=r.verbruik>0
+      ?`<div style="font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;margin-top:3px" data-refill-verbruik="${r.product.id}">▼ ${r.verbruik} ${r.product.unit} verbruikt → algemeen verbruik</div>`
+      :r.verbruik<0?`<div style="font-size:11px;color:var(--green);font-family:'JetBrains Mono',monospace;margin-top:3px" data-refill-verbruik="${r.product.id}">▲ ${-r.verbruik} ${r.product.unit} meer aanwezig dan de app dacht → wordt bijgeboekt</div>`:'';
     const removeBtn=owner
       ?`<button type="button" data-refill-remove="${r.product.id}" onclick="updateBusTarget(${busId}, ${r.product.id}, 0, this)" title="Niet meer aanvullen in ${locName(busId)}" style="border:none;background:none;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;cursor:pointer">✕</button>`
       :'';
@@ -3600,7 +3660,8 @@ function renderBusRefill() {
       <div style="min-width:0">
         <div style="font-weight:500;font-size:14px">${r.product.name}</div>
         ${codes}
-        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">nu ${r.huidig} · ${streefTxt} · tekort ${r.tekort}${eenheidTxt} ${kortBadge}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">${nuTxt} · ${streefTxt} · tekort ${Math.max(0,r.tekort)}${eenheidTxt} ${kortBadge}</div>
+        ${verbruikTxt}
         ${tochBtn}
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
@@ -3613,12 +3674,24 @@ function renderBusRefill() {
     </div>`;
   }).join('');
   const totaalAanvullen=list.reduce((s,r)=>s+r.aanvullen,0);
+  const aantalVerbruik=list.filter(r=>r.verbruik!==0).length;
   const aantalRegels=list.filter(r=>r.aanvullen>0).length;
-  btn.style.display=totaalAanvullen>0?'':'none';
-  btn.textContent=`✓ ${aantalRegels} ${aantalRegels===1?'product':'producten'} aanvullen naar ${locName(busId)}`;
-  if(totaalAanvullen<=0) {
+  const actie=busRefillActionRows(busId).length;
+  btn.style.display=actie>0?'':'none';
+  btn.textContent=aantalRegels>0
+    ?`✓ ${aantalRegels} ${aantalRegels===1?'product':'producten'} aanvullen naar ${locName(busId)}${aantalVerbruik?` · ${aantalVerbruik} verbruik boeken`:''}`
+    :`✓ ${aantalVerbruik} verbruik boeken in ${locName(busId)}`;
+  if(totaalAanvullen<=0 && list.some(r=>r.tekort>0)) {
     intro.innerHTML+='<br><span style="color:var(--accent)">Het magazijn heeft niets om aan te vullen.</span>';
   }
+}
+
+// v2.21.0: getelde stand voor verbruiksmateriaal (sessie, per aanvulling). Leeg veld
+// = terug naar systeemstand (geen verbruik).
+function setRefillCount(productId, raw) {
+  const v=parseFloat(String(raw).replace(',','.'));
+  if(raw===''||raw==null||!Number.isFinite(v)||v<0) delete busRefillCount[productId]; else busRefillCount[productId]=v;
+  renderBusRefill();
 }
 
 // v2.19.0: "Toch meegeven" bij alleen aangebroken verpakking — eenmalig voor deze
@@ -3819,10 +3892,20 @@ async function confirmBusRefill() {
 }
 async function confirmBusRefillImpl() {
   const busId=busRefillTarget;
-  const list=busRefillList(busId).filter(r=>r.aanvullen>0);
+  const list=busRefillActionRows(busId);
   if(!list.length) { alert('Niets aan te vullen.'); return; }
   setSyncing('syncing');
   for(const r of list) {
+    // v2.21.0: eerst het verbruik van verbruiksmateriaal boeken (telling in de bus).
+    // 'out' zonder project = algemeen verbruik; telt mee in het verbruiksvoorstel.
+    if(r.verbruik>0) {
+      await applyStockDelta(r.product.id, busId, -r.verbruik);
+      await dbPost('history', {type:'out', product_id:r.product.id, project_id:null, qty:r.verbruik, note:`Verbruikt (telling ${locName(busId)}): ${r.systeem} → ${r.geteld}`, date:today(), employee_name:getCurrentEmployee()||null, location_id:busId});
+    } else if(r.verbruik<0) {
+      await applyStockDelta(r.product.id, busId, -r.verbruik);
+      await dbPost('history', {type:'in', product_id:r.product.id, project_id:null, qty:-r.verbruik, note:`Telling ${locName(busId)}: ${r.systeem} → ${r.geteld} (meer aanwezig)`, date:today(), employee_name:getCurrentEmployee()||null, location_id:busId});
+    }
+    if(r.aanvullen<=0) continue;
     await applyStockDelta(r.product.id, null, -r.aanvullen);      // uit magazijn
     await applyStockDelta(r.product.id, busId, r.aanvullen);       // naar bus
     await dbPost('history', {type:'transfer', product_id:r.product.id, qty:r.aanvullen, note:'Bus aangevuld tot streef', date:today(), employee_name:getCurrentEmployee()||null, location_id:null, location_to_id:busId});
@@ -3866,7 +3949,7 @@ function openProductDetail(id, limit) {
       const locTxt=(h.type!=='transfer'&&h.locationId)?'🚐 '+locName(h.locationId):'';
       const meta=[h.date, h.employee?'👤 '+h.employee:'', locTxt, h.note].filter(Boolean).join(' · ');
       return `<div class="hist-item" onclick="closeModal('modal-detail');openHistoryEdit(${h.id})"><div class="hist-dot ${h.type}"></div>
-        <div><div class="hist-text">${label}${isInfoRow(h)?'':' '+h.qty+'×'}${proj?' → '+proj.name:''}${route}</div>
+        <div><div class="hist-text">${label}${isInfoRow(h)?'':' '+h.qty+'×'}${proj?' → '+proj.name:isConsumptionRow(h)?' → 🧽 Algemeen verbruik':''}${route}</div>
         <div class="hist-date">${meta}</div></div></div>`;
     }).join(''):'<div class="empty" style="padding:16px 0">Geen geschiedenis</div>'}
     ${(histMore>0||limit>PRODUCT_HIST_DEFAULT)?`<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:14px 0">${
@@ -4565,6 +4648,8 @@ function isPriceRow(h) { return h.type==='count' && /^Prijs /.test(h.note||''); 
 function isTargetRow(h) { return h.type==='count' && /^Streef /.test(h.note||''); }
 // Regels zonder voorraadeffect (prijs, streef): geen "N×" tonen, niet als telcorrectie behandelen.
 function isInfoRow(h) { return isPriceRow(h) || isTargetRow(h); }
+// v2.21.0: verbruik van verbruiksmateriaal (telling in bus) — bewust zonder project.
+function isConsumptionRow(h) { return h.type==='out' && !h.projectId && /^Verbruikt \(telling /.test(h.note||''); }
 function histCountLabel(h) { return isPriceRow(h) ? 'Prijs' : isTargetRow(h) ? 'Streef' : /^Telling/.test(h.note||'') ? 'Telling' : 'Correctie'; }
 function fmtPrice(v) { return (Math.round((Number(v)||0)*100)/100).toFixed(2).replace('.',','); }
 function priceHistoryRow(productId, oldPrice, newPrice) {
