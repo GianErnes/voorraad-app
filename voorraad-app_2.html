@@ -6,10 +6,10 @@
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  VOORRAAD-APP — ERNES SCHILDERS                                      ║
   ║  Single-file HTML · Supabase backend · GitHub Pages hosting          ║
-  ║  Versie: 2.21.1 — LET OP: leidend is de APP_VERSION constante in het  ║
+  ║  Versie: 2.21.2 — LET OP: leidend is de APP_VERSION constante in het  ║
   ║  script. Bump ALTIJD allebei, anders leest de volgende sessie hier   ║
   ║  een verouderd nummer en gaat die van een oude basis uit.            ║
-  ║  Laatst gewijzigd: 2026-09-30                                        ║
+  ║  Laatst gewijzigd: 2026-10-04                                        ║
   ╠══════════════════════════════════════════════════════════════════════╣
   ║                                                                      ║
   ║  ⚠️  LEES DIT ALS EERSTE — VOOR JE IETS WIJZIGT                       ║
@@ -254,6 +254,14 @@
   ║    └─ De knop stond alleen onder Instellingen (verborgen voor staff).║
   ║       Nu ook als link onderin modal-employee ("Wie ben jij vandaag?")║
   ║       en onderaan CHANGELOG_HTML. Zelfde URL, geen nieuwe logica.    ║
+  ║  • v2.21.2 — Losse bestelling sneller                                ║
+  ║    └─ Kleurknoppen in modal-loose-order: kleuren die al op het       ║
+  ║       gekozen project geboekt zijn (history.color_code, anders       ║
+  ║       color_codes[0] van het product) + bestaande kleurvarianten van ║
+  ║       het basisproduct. Tikken vult lo-color; vrij typen blijft.     ║
+  ║    └─ Per losse-bestellingregel op de bestellen-tab een eigen knop   ║
+  ║       📦 Ontvangen → openReceiveSupModal(supId, onlyId) toont alleen ║
+  ║       die regel. Voor iedereen (losse bestellingen mag staff al).    ║
   ║                                                                      ║
   ║  VASTE INSTELLINGEN:                                                 ║
   ║  • Eigenaar-pin: 7102 (alleen bij wisselen naar Gian/Max)            ║
@@ -735,7 +743,7 @@
   <div class="modal">
     <div class="modal-title">Losse bestelling<span class="modal-close" onclick="closeModal('modal-loose-order')">×</span></div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Voor een product-kleur die niet in de voorraad staat. Het komt als "besteld" onder de leverancier; bij ontvangst staat het klaar om te laden voor het project.</p>
-    <div class="form-group"><label>PROJECT</label><select id="lo-project"></select></div>
+    <div class="form-group"><label>PROJECT</label><select id="lo-project" onchange="updateLooseColorChips()"></select></div>
     <div class="form-group"><label>BASISPRODUCT <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:11px">— leverancier, eenheid en prijs worden overgenomen</span></label>
       <div style="position:relative;margin-bottom:8px">
         <input id="lo-search" placeholder="🔍 Zoek product…" oninput="filterLooseProducts()" style="padding-right:32px">
@@ -744,7 +752,8 @@
       <div id="lo-list" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
       <div id="lo-selected" style="font-size:13px;color:var(--accent);margin-top:6px;min-height:18px"></div>
     </div>
-    <div class="form-group"><label>KLEURCODE</label><input id="lo-color" placeholder="bv. 7016 of RAL 7016" oninput="updateLoosePreview()"></div>
+    <div class="form-group"><label>KLEURCODE</label><input id="lo-color" placeholder="bv. 7016 of RAL 7016" oninput="updateLoosePreview();updateLooseColorChips()">
+      <div id="lo-color-chips"></div></div>
     <div class="form-group"><label>AANTAL</label><input id="lo-qty" type="number" inputmode="decimal" min="0.125" step="0.125" placeholder="bv. 2"></div>
     <div id="lo-preview" style="font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px"></div>
     <button class="btn btn-primary btn-full" id="lo-confirm-btn" onclick="confirmLooseOrder()">Op bestellijst zetten</button>
@@ -920,8 +929,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.21.1';
-const BUILD_DATE = '2026-10-02';
+const APP_VERSION = '2.21.2';
+const BUILD_DATE = '2026-10-04';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -957,7 +966,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — verbruiksmateriaal dat gewoon op raakt:<br><br>
+  <strong>v${APP_VERSION}</strong> — losse bestelling sneller:<br><br>
+  • <strong>Kleurknoppen bij Losse bestelling</strong>: zodra je een project kiest, zie je onder het kleurveld de kleuren die al op dat project geboekt zijn, plus de kleuren waarin het gekozen basisproduct al bestaat. Eén tik vult de kleurcode in — niet meer overtypen met kans op een typefout. Vrij typen kan nog steeds voor een echt nieuwe kleur.<br><br>
+  • <strong>Eén losse bestelling ontvangen</strong>: bij de grossier wil je snel alleen díe ene bestelling afvinken. Op de bestellen-tab staat nu bij elke losse bestelling een eigen knop <strong>📦 Ontvangen</strong>, die alleen die regel toont — met aantal en "Direct op project" al ingevuld. De grote Ontvangen-knop van de leverancier blijft voor de rest.<br><br>
+  <em>Eerder (v2.21.1):</em> verbruiksmateriaal dat gewoon op raakt:<br><br>
   • <strong>📖 Handleiding voor iedereen</strong>: de gebruiksaanwijzing is nu ook te openen vanuit het scherm "Wie ben jij vandaag?" en onderaan dit bericht — niet meer alleen via Instellingen.<br><br>
   • <strong>Verbruiksmateriaal</strong>: sponzen, reinigingsdoekjes en kit worden niet op een project geboekt maar slijten of raken op. Tot nu toe bleven ze in de app eeuwig in de bus staan. Nieuw vinkje <strong>Verbruiksmateriaal</strong> bij ✏️ Bewerken (eigenaar).<br><br>
   • <strong>Tellen bij Bus aanvullen</strong>: voor producten met dat vinkje vraagt de aanvullijst nu eerst <strong>"nog in bus"</strong> — hoeveel liggen er écht nog. Het verschil met wat de app dacht wordt afgeboekt als <strong>algemeen verbruik</strong>, en daarna wordt de bus zoals gewoonlijk aangevuld tot de streef. Zo zakt het magazijn mee en komen sponzen op tijd op de bestellijst. Niets ingevuld = niets verbruikt.<br><br>
@@ -2306,6 +2318,7 @@ function renderOrders() {
             <div class="card-sub" style="margin-top:4px">${isLooseOrder(p)?`📁 Losse bestelling voor <strong>${orderedProjectName(p)}</strong>${p.qty<p.min?` · Nu: ${p.qty} · Min: ${p.min}`:''}`:`Nu: ${p.qty} · Min: ${p.min} · Streef: ${p.target||p.min}`}</div></div>
             <div style="text-align:right"><div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--accent)">${q} ${p.unit}</div>
             ${packs>1?`<div class="card-sub" style="font-size:11px">${packs}× ${p.pack} ${p.unit}</div>`:''}
+            ${isLooseOrder(p)?`<button onclick="openReceiveSupModal(${p.supplier===null?'null':p.supplier},${p.id})" title="Alleen deze losse bestelling ontvangen" style="margin-top:6px;background:var(--green);border:1px solid var(--green);border-radius:6px;color:#fff;font-size:11px;padding:4px 9px;cursor:pointer;font-weight:500">📦 Ontvangen</button>`:''}
             ${isLooseOrder(p)&&isCurrentUserOwner()?`<button onclick="cancelLooseOrder(${p.id})" title="Losse bestelling annuleren" style="margin-top:4px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:2px 8px;cursor:pointer">✕ annuleer</button>`:''}
             </div>
           </div>`;}).join('')}
@@ -2424,11 +2437,12 @@ function copyExportText() {
 // ====================== RECEIVE ======================
 // Wie mag wat ontvangen: eigenaren alles, medewerkers alleen losse projectbestellingen (v2.10.1)
 function receivableItems(items) { return isCurrentUserOwner() ? items : items.filter(isLooseOrder); }
-function openReceiveSupModal(supId) {
+// onlyId (v2.21.2): toon alleen dat ene product — snel één losse bestelling afvinken bij de grossier.
+function openReceiveSupModal(supId, onlyId) {
   const s=db.suppliers.find(x=>x.id===supId);
-  const items=receivableItems(db.products.filter(p=>needsOrder(p)&&p.supplier===supId));
+  let items=receivableItems(db.products.filter(p=>needsOrder(p)&&(onlyId?p.id===onlyId:p.supplier===supId)));
   if(!items.length) { alert('Geen producten te ontvangen.'); return; }
-  document.getElementById('recv-sup-title').textContent=`Ontvangen – ${s.name}`;
+  document.getElementById('recv-sup-title').textContent=onlyId?`Ontvangen – ${items[0].name}`:`Ontvangen – ${s?s.name:'leverancier'}`;
   document.getElementById('recv-sup-list').innerHTML=recvRows(items);
   openModal('modal-receive-sup');
 }
@@ -2546,6 +2560,7 @@ function openLooseOrderModal() {
   document.getElementById('lo-qty').value='';
   document.getElementById('lo-preview').textContent='';
   filterLooseProducts();
+  updateLooseColorChips();
   openModal('modal-loose-order');
 }
 function filterLooseProducts() {
@@ -2577,7 +2592,60 @@ function selectLooseProduct(id) {
   document.getElementById('lo-selected').innerHTML=`✓ ${p.name} · ${supplierName(p.supplier)} · per ${p.pack} ${p.unit}`+(hasColorInName(p.name)?`<div style="color:var(--red);margin-top:4px">⚠️ Deze naam eindigt op een kleurcode. Het nieuwe product erft die naam; hernoem het basisproduct liever eerst (Voorraad → bewerken) of kies een variant zonder kleur in de naam.</div>`:'');
   const q=document.getElementById('lo-qty'); if(!q.value) q.value=p.pack||1;
   filterLooseProducts();
+  updateLooseColorChips();
   updateLoosePreview();
+}
+// ====================== KLEURKNOPPEN LOSSE BESTELLING (v2.21.2) ======================
+// Kleuren die al op het gekozen project geboekt zijn: eerst history.color_code,
+// anders de (enige) kleur van het product zelf. Alleen uitgifte/retour-regels tellen.
+function looseProjectColors(projId) {
+  if(!projId) return [];
+  const out=[]; const seen=new Set();
+  (db.history||[]).forEach(h=>{
+    if(h.projectId!==projId) return;
+    if(h.type!=='out'&&h.type!=='in') return;
+    let c=(h.color||'').trim();
+    if(!c) { const pr=db.products.find(x=>x.id===h.productId); c=(pr&&Array.isArray(pr.color_codes)&&pr.color_codes[0])||''; }
+    if(!c||seen.has(c)) return;
+    seen.add(c); out.push(c);
+  });
+  return out;
+}
+// Kleuren waarin het basisproduct al als apart product bestaat (zelfde naam).
+function looseBaseVariantColors(base) {
+  if(!base) return [];
+  const out=[]; const seen=new Set();
+  db.products.forEach(x=>{
+    if(x.name!==base.name||!Array.isArray(x.color_codes)) return;
+    x.color_codes.forEach(c=>{ c=(c||'').trim(); if(c&&!seen.has(c)) { seen.add(c); out.push(c); } });
+  });
+  return out;
+}
+function looseColorChip(c, current, ownerLabel) {
+  const active=normalizeColor(c)===current;
+  const style=`font-size:12px;font-family:'JetBrains Mono',monospace;padding:6px 10px;border-radius:8px;cursor:pointer;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#fff':'var(--text)'};font-weight:500`;
+  return `<button type="button" onclick="pickLooseColor(this.dataset.c)" data-c="${c.replace(/"/g,'&quot;')}" title="${ownerLabel}" style="${style}">${c}</button>`;
+}
+function updateLooseColorChips() {
+  const el=document.getElementById('lo-color-chips'); if(!el) return;
+  const projId=parseInt(document.getElementById('lo-project').value)||null;
+  const base=looseBaseId?db.products.find(x=>x.id===looseBaseId):null;
+  const raw=(document.getElementById('lo-color').value||'').trim();
+  const current=raw?normalizeColor(raw):'';
+  const projCols=looseProjectColors(projId);
+  const projSet=new Set(projCols.map(normalizeColor));
+  const varCols=looseBaseVariantColors(base).filter(c=>!projSet.has(normalizeColor(c)));
+  let html='';
+  if(projCols.length) html+=`<div style="font-size:11px;color:var(--muted);margin:8px 0 4px">Al op dit project:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${projCols.map(c=>looseColorChip(c,current,'Al geboekt op dit project')).join('')}</div>`;
+  if(varCols.length) html+=`<div style="font-size:11px;color:var(--muted);margin:8px 0 4px">${base.name} bestaat al in:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${varCols.map(c=>looseColorChip(c,current,'Bestaat al als product')).join('')}</div>`;
+  if(!html&&projId) html=`<div style="font-size:11px;color:var(--muted);margin-top:6px">Nog geen kleuren op dit project geboekt — typ de kleurcode.</div>`;
+  el.innerHTML=html;
+}
+function pickLooseColor(c) {
+  const inp=document.getElementById('lo-color');
+  inp.value=c;
+  updateLoosePreview();
+  updateLooseColorChips();
 }
 function updateLoosePreview() {
   const p=looseBaseId?db.products.find(x=>x.id===looseBaseId):null;
