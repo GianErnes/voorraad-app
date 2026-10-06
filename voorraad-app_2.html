@@ -254,6 +254,13 @@
   ║    └─ De knop stond alleen onder Instellingen (verborgen voor staff).║
   ║       Nu ook als link onderin modal-employee ("Wie ben jij vandaag?")║
   ║       en onderaan CHANGELOG_HTML. Zelfde URL, geen nieuwe logica.    ║
+  ║  • v2.22.1 — Piekdetectie verbruik (usageSpike)                      ║
+  ║    └─ netto verbruik laatste SPIKE_WEEKS(2) ≥ SPIKE_FACTOR(2)× de    ║
+  ║       basislijn = weken 3..12 ervóór (min 4 wkn, >0), zodat de piek ║
+  ║       het gemiddelde niet zelf omhoogtrekt; urgent als tot/recent <  ║
+  ║       lead/7+1. renderSpikeSection in #spike-dash (dashboard) en     ║
+  ║       #spike-orders (bestellen), excl. producten al onder min.       ║
+  ║       Signaal only — needsOrder() ongewijzigd.                       ║
   ║  • v2.22.0 — Weekverbruik + weken voorraad zichtbaar zonder Bewerken ║
   ║    └─ usageIndex(): history één keer per render gegroepeerd per      ║
   ║       product; usageStats(p, rows) accepteert die rijen.             ║
@@ -297,7 +304,7 @@
 <style>
   :root {
     --bg:#f5f5f5;--surface:#ffffff;--surface2:#fafafa;--border:#e5e5e5;
-    --accent:#e63946;--accent2:#2563b0;--red:#e63946;--green:#2e7d52;
+    --accent:#e63946;--accent2:#2563b0;--spike:#c47a1a;--red:#e63946;--green:#2e7d52;
     --text:#1a1a1a;--muted:#6b7280;--radius:8px;--tab-h:68px;
     --shadow-sm:0 1px 2px rgba(0,0,0,.04);
     --shadow:0 1px 3px rgba(0,0,0,.08);
@@ -486,6 +493,7 @@
     </div>
     <div class="stat-grid" id="stat-grid"></div>
     <div id="staged-dash"></div>
+    <div id="spike-dash" style="display:none"></div>
     <div class="section-hdr">⚠️ Laag op voorraad</div>
     <div id="low-stock-list"></div>
     <div class="section-hdr">📋 Recente activiteit</div>
@@ -522,6 +530,7 @@
       <button class="btn btn-secondary" id="btn-loose-order" onclick="openLooseOrderModal()" style="display:none">➕ Losse bestelling</button>
     </div>
     <div class="section-hdr">Te bestellen — week <span id="order-week"></span></div>
+    <div id="spike-orders" style="display:none"></div>
     <div id="order-by-supplier"></div>
     <div class="section-hdr">Alle leveranciers</div>
     <div id="supplier-list"></div>
@@ -935,7 +944,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.22.0';
+const APP_VERSION = '2.22.1';
 const BUILD_DATE = '2026-10-06';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -972,7 +981,10 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — weekverbruik zichtbaar voor iedereen:<br><br>
+  <strong>v${APP_VERSION}</strong> — waarschuwing bij piekverbruik:<br><br>
+  • <strong>⚡ Verbruik piekt</strong>: gaat een product in de laatste 2 weken minstens 2× zo hard als het gemiddelde weekverbruik, dan zie je dat op het dashboard en bovenaan de bestellen-tab in een eigen lijstje, in het productdetail als melding en op de productkaart als "⚡ 3× verbruik". Rood betekent: bij dit tempo is de totale voorraad op vóór de levertijd plus een week — dan is eerder bestellen verstandig, ook al staat het product nog niet onder het minimum.<br><br>
+  • De app zet niets vanzelf op de bestellijst; het blijft een signaal, de beslissing is aan jou. Producten die al onder het minimum staan, staan niet dubbel in het lijstje.<br><br>
+  <em>Eerder (v2.22.0):</em> weekverbruik zichtbaar voor iedereen:<br><br>
   • <strong>Verbruik per week in beeld</strong>: tik op een product en je ziet naast de magazijnstand en de waarde een derde tegel met het gemiddelde verbruik per week en hoeveel <strong>weken voorraad</strong> er nog ligt (magazijn + bussen gedeeld door het weekverbruik). Groen = ruim genoeg, rood = minder dan de levertijd plus een week, dus tijd om te bestellen. Dit staat ook kort op elke productkaart in de voorraadlijst — ook in de busweergave en ook voor niet-eigenaren, zonder Bewerken.<br><br>
   • Het cijfer is netto verbruik over de laatste 12 weken (uitgiftes min retouren; correcties, verplaatsingen en tellingen tellen niet mee; algemeen verbruik van sponzen e.d. wél). Bij minder dan 6 weken geschiedenis of minder dan 3 uitgiftes staat er een streepje met de reden — dan is er nog geen betrouwbaar gemiddelde.<br><br>
   <em>Eerder (v2.21.2):</em> losse bestelling sneller:<br><br>
@@ -1662,10 +1674,73 @@ function usageSummary(p, preRows) {
   const wkTxt=wk>52?'>52':String(Math.round(wk*10)/10);
   return {weekly:u.weekly, weeksStock:wk, wkTxt, krap, weeks:u.weeks, outs:u.outs, unit:p.unit};
 }
+// v2.22.1: piekdetectie — netto verbruik van de laatste SPIKE_WEEKS weken vergeleken
+// met het 12-weken-gemiddelde. Piek = minstens SPIKE_FACTOR× het gemiddelde.
+// urgent = bij dit tempo is de totale voorraad op vóór levertijd + 1 week.
+// Alleen een signaal; er wordt niets automatisch op de bestellijst gezet.
+const SPIKE_WEEKS=2, SPIKE_FACTOR=2;
+function usageSpike(p, preRows) {
+  const u=usageStats(p, preRows);
+  if(!u.ok||!(u.weekly>0)) return null;
+  const rows=preRows||db.history.filter(h=>h.productId===p.id);
+  const now=new Date(today()+'T00:00:00');
+  const cutoff=new Date(now.getTime()-SPIKE_WEEKS*7*864e5).toISOString().slice(0,10);
+  // Basislijn = de weken VÓÓR het piekvenster (anders trekt de piek zelf het
+  // gemiddelde omhoog en valt hij juist weg). Minimaal 4 basisweken.
+  const oldCutoff=new Date(now.getTime()-USAGE_WEEKS*7*864e5).toISOString().slice(0,10);
+  let net=0, outs=0, baseNet=0;
+  rows.forEach(h=>{
+    if(h.date<oldCutoff) return;
+    if(h.type!=='out'&&h.type!=='in') return;
+    if(isManualCorrection(h)) return;
+    const q=h.type==='out'?h.qty:-h.qty;
+    if(h.date>=cutoff) { net+=q; if(h.type==='out') outs++; } else baseNet+=q;
+  });
+  const baseWeeks=u.weeks-SPIKE_WEEKS;
+  if(baseWeeks<4||baseNet<=0) return null;
+  const baseWeekly=baseNet/baseWeeks;
+  if(outs===0||net<=0) return null;
+  const recentWeekly=net/SPIKE_WEEKS;
+  if(recentWeekly < SPIKE_FACTOR*baseWeekly) return null;
+  const factor=Math.round(recentWeekly/baseWeekly*10)/10;
+  const tot=totalQty(p);
+  const wkLeft=tot/recentWeekly;
+  const urgent=wkLeft < (u.lead/7+1);
+  return {recentWeekly:Math.round(recentWeekly*10)/10, avgWeekly:Math.round(baseWeekly*10)/10, factor, net:roundQty(net), outs, wkLeft, wkLeftTxt:wkLeft>52?'>52':String(Math.round(wkLeft*10)/10), urgent, lead:u.lead, unit:p.unit};
+}
+function spikeInline(p, preRows) {
+  const sp=usageSpike(p, preRows);
+  if(!sp) return '';
+  return ` · <span style="color:${sp.urgent?'var(--red)':'var(--spike)'};font-weight:600">⚡ ${sp.factor}× verbruik${sp.urgent?' — bestel':''}</span>`;
+}
 function usageInline(p, preRows) {
   const u=usageSummary(p, preRows);
   if(!u) return '';
-  return ` · 📊 ${u.weekly} ${u.unit}/wk · <span style="color:${u.krap?'var(--red)':'var(--green)'};font-weight:600">${u.wkTxt} wk voorraad</span>`;
+  return ` · 📊 ${u.weekly} ${u.unit}/wk · <span style="color:${u.krap?'var(--red)':'var(--green)'};font-weight:600">${u.wkTxt} wk voorraad</span>${spikeInline(p, preRows)}`;
+}
+// Producten met een piek, urgent eerst; optioneel zonder wat al onder minimum staat.
+function spikeProducts(excludeLow) {
+  const idx=usageIndex();
+  return db.products.map(p=>({p,sp:usageSpike(p, idx.get(p.id))})).filter(x=>x.sp)
+    .filter(x=>!excludeLow || !(x.p.qty<x.p.min))
+    .sort((a,b)=>(b.sp.urgent-a.sp.urgent)||(a.sp.wkLeft-b.sp.wkLeft));
+}
+function spikeCardHtml(x) {
+  const {p,sp}=x;
+  return `<div class="card" onclick="openProductDetail(${p.id})" style="border-left:4px solid ${sp.urgent?'var(--red)':'var(--spike)'};cursor:pointer">
+      <div class="card-row"><span class="card-title">${p.name}</span><span class="badge" style="background:${sp.urgent?'rgba(230,57,70,.12)':'rgba(232,160,72,.18)'};color:${sp.urgent?'var(--red)':'var(--spike)'}">⚡ ${sp.factor}×</span></div>
+      <div class="card-sub">Laatste ${SPIKE_WEEKS} wkn: <strong>${sp.recentWeekly} ${p.unit}/wk</strong> (daarvoor gem. ${sp.avgWeekly}) · voorraad ${roundQty(totalQty(p))} ${p.unit} = <strong style="color:${sp.urgent?'var(--red)':'inherit'}">${sp.wkLeftTxt} wk</strong> bij dit tempo · levertijd ${sp.lead} dgn · min ${p.min}${isOrderActive(p)?` · <span style="color:var(--accent2);font-weight:600">📦 besteld</span>`:''}</div>
+    </div>`;
+}
+function renderSpikeSection(containerId, excludeLow) {
+  const el=document.getElementById(containerId); if(!el) return;
+  const rows=spikeProducts(excludeLow);
+  if(!rows.length) { el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display='';
+  const urg=rows.filter(x=>x.sp.urgent).length;
+  el.innerHTML=`<div class="section-hdr">⚡ Verbruik piekt${urg?` <span style="color:var(--red)">· ${urg} vóór levering op</span>`:''}</div>
+    <div class="card-sub" style="margin:-4px 0 8px;font-family:inherit">Minstens ${SPIKE_FACTOR}× het gemiddelde weekverbruik in de laatste ${SPIKE_WEEKS} weken. Rood = bij dit tempo is de voorraad op vóór de levertijd + 1 week; overweeg eerder te bestellen. Nog niet onder het minimum, dus staat niet vanzelf op de bestellijst.</div>
+    ${rows.map(spikeCardHtml).join('')}`;
 }
 function renderUsageAdvice(p) {
   const box=document.getElementById('p-usage-advice'); if(!box) return;
@@ -1871,6 +1946,7 @@ function renderDashboard() {
         const proj=db.projects.find(x=>x.id===pid);
         return `<div style="margin-bottom:6px;font-size:13px;font-weight:600;color:var(--muted);padding-left:2px">${proj?proj.name:'?'}</div>`+stagedListHtml(pid,true);
       }).join('');
+  renderSpikeSection('spike-dash', true);   // v2.22.1
   document.getElementById('low-stock-list').innerHTML=low.length===0?'<div class="empty">✅ Alles op peil</div>':
     low.map(p=>`<div class="card" onclick="openProductDetail(${p.id})">
       <div class="card-row"><span class="card-title">${p.name}</span><span class="badge badge-low">${p.qty} ${p.unit}</span></div>
@@ -2329,6 +2405,7 @@ function renderOrders() {
   const recvAllBtn=document.querySelector('#page-orders button[onclick="openReceiveAllModal()"]');
   if(recvAllBtn) recvAllBtn.style.display=receivableItems(db.products.filter(needsOrder)).length?'':'none';
   const needed=db.products.filter(needsOrder);
+  renderSpikeSection('spike-orders', true);   // v2.22.1
   const container=document.getElementById('order-by-supplier');
   if(!needed.length) { container.innerHTML='<div class="empty">✅ Niets te bestellen</div>'; }
   else {
@@ -4043,6 +4120,8 @@ function openProductDetail(id, limit) {
           ? `<div class="stat-card" data-usage-card><div class="stat-val" style="font-size:16px">${u.weekly} ${p.unit}/wk</div><div class="stat-lbl"><span style="color:${u.krap?'var(--red)':'var(--green)'};font-weight:600">${u.wkTxt} wk voorraad</span> · ${u.weeks} wkn, ${u.outs} uitg.</div></div>`
           : `<div class="stat-card" data-usage-card><div class="stat-val" style="color:var(--muted)">—</div><div class="stat-lbl">Verbruik/wk: ${us.reason}</div></div>`; })()}
     </div>
+    ${(()=>{ const sp=usageSpike(p, histAll); if(!sp) return '';
+      return `<div class="card-sub" data-spike-warn style="margin:-6px 0 12px;padding:8px 10px;border-radius:8px;border-left:4px solid ${sp.urgent?'var(--red)':'var(--spike)'};background:var(--surface2);font-family:inherit;color:var(--text)">⚡ <strong>Verbruik piekt: ${sp.factor}× het gemiddelde</strong> — ${sp.recentWeekly} ${p.unit}/wk in de laatste ${SPIKE_WEEKS} weken (daarvoor gem. ${sp.avgWeekly}). Bij dit tempo is de voorraad over <strong style="color:${sp.urgent?'var(--red)':'inherit'}">${sp.wkLeftTxt} wk</strong> op; levertijd ${sp.lead} dagen.${sp.urgent?' <strong style="color:var(--red)">Overweeg nu te bestellen.</strong>':''}</div>`; })()}
     ${busRows.length?`<div class="card-sub" style="margin-bottom:6px">📍 In bussen: ${busRows.map(b=>`${b.name}: <strong style="font-family:'JetBrains Mono',monospace">${b.qty}</strong>`).join(' · ')} — totaal ${roundQty(totalQty(p))} ${p.unit}</div>`:''}
     <div class="card-sub" style="margin-bottom:6px">Categorie: ${p.cat} · Min: ${p.min} ${p.unit} · €${p.price}/${p.unit}</div>
     ${sup?`<div class="card-sub" style="margin-bottom:14px">Leverancier: ${sup.name}</div>`:''}
