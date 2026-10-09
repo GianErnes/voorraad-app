@@ -254,6 +254,12 @@
   ║    └─ De knop stond alleen onder Instellingen (verborgen voor staff).║
   ║       Nu ook als link onderin modal-employee ("Wie ben jij vandaag?")║
   ║       en onderaan CHANGELOG_HTML. Zelfde URL, geen nieuwe logica.    ║
+  ║  • v2.22.3 — Telling robuust bij slechte wifi en vergrendeling        ║
+  ║    └─ dbUpsert on_conflict=count_id,product_id (valt terug op POST   ║
+  ║       zonder index); time-out → refreshCountLine; 🔄 Opnieuw-knop;  ║
+  ║       ACTIVE_COUNT_KEY in localStorage → resumeCountAfterReload na   ║
+  ║       loadAll; Screen Wake Lock zolang modal-count open. SQL:        ║
+  ║       unieke index stock_count_lines(count_id, product_id).          ║
   ║  • v2.22.2 — Telscherm volle hoogte + categoriehint                   ║
   ║    └─ #count-sheet: height 96% vv-h, flex-kolom, alleen de lijst    ║
   ║       scrolt (geen geneste scrollers meer); select+scan op één rij; ║
@@ -884,7 +890,7 @@
 <!-- VOORRAADTELLING (v2.14.0) -->
 <div class="modal-overlay" id="modal-count">
   <div class="modal" id="count-sheet">
-    <div class="modal-title"><span id="count-title">Telling</span><span id="count-progress" style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:400;margin-left:auto;margin-right:12px"></span><span class="modal-close" onclick="closeModal('modal-count')">×</span></div>
+    <div class="modal-title"><span id="count-title">Telling</span><span id="count-progress" style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:400;margin-left:auto;margin-right:12px"></span><span class="modal-close" onclick="leaveCountModal()">×</span></div>
     <div style="display:flex;gap:8px;margin-bottom:8px">
       <select id="count-view" onchange="renderCountList()" style="flex:1;margin:0">
         <option value="todo">Nog te tellen</option>
@@ -900,7 +906,7 @@
     <div id="count-status" style="font-size:13px;color:var(--red);min-height:18px;margin-bottom:6px"></div>
     <div id="count-product-list" style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-count')">Later verder</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="leaveCountModal()">Later verder</button>
       <button class="btn btn-primary" style="flex:1" id="count-close-btn" onclick="openCountClose()">Afsluiten →</button>
     </div>
   </div>
@@ -953,7 +959,7 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.22.2';
+const APP_VERSION = '2.22.3';
 const BUILD_DATE = '2026-10-09';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
@@ -990,7 +996,11 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — telscherm beter bruikbaar:<br><br>
+  <strong>v${APP_VERSION}</strong> — tellen in het magazijn zonder verrassingen:<br><br>
+  • <strong>Telling blijft open na vergrendelen</strong>: vergrendelt je telefoon, dan herstart iOS de app en was de telling dicht. Nu opent de app de lopende telling vanzelf weer, met je zoekwoord en filter.<br><br>
+  • <strong>Scherm blijft aan tijdens het tellen</strong>, zodat de telefoon niet steeds vergrendelt (werkt op iPhones met iOS 18.4 of nieuwer als beginscherm-app).<br><br>
+  • <strong>Geen antwoord van de database?</strong> De app controleert eerst of de telregel tóch is aangekomen. Zo niet, dan staat er een knop <strong>🔄 Opnieuw</strong> bij de melding. Dubbele telregels zijn hiermee uitgesloten (na de SQL-migratie van deze versie).<br><br>
+  <em>Eerder (v2.22.2):</em> telscherm beter bruikbaar:<br><br>
   • <strong>Telscherm op volle hoogte</strong>: de productlijst vult nu het hele scherm in plaats van een half scherm. Alleen de lijst scrolt; titel, zoekveld en de knoppen Later verder / Afsluiten blijven staan. Komt het toetsenbord omhoog, dan krimpt alleen de lijst en blijft het aangetikte product in beeld.<br><br>
   • <strong>Zoeken in een categorie-telling</strong>: een telling voor bijvoorbeeld "Non paint" zoekt alleen binnen die categorie. Bestaan er producten met die naam in een andere categorie, dan meldt de lijst dat nu onderaan, zodat je niet denkt dat de zoekfunctie kapot is.<br><br>
   • De zwevende ⤒ ⤓ knoppen staan niet meer over de telregels heen.<br><br>
@@ -1274,6 +1284,21 @@ async function dbGetAll(table, baseParams='') {
   }
   return all;
 }
+// v2.22.3: upsert op een unieke sleutel. Valt terug op gewone POST zolang de
+// unieke index (SQL-migratie v2.22.3) nog niet bestaat, zodat de app niet breekt.
+async function dbUpsert(table, body, onConflict) {
+  const r = await netFetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(body)
+  }, `POST ${table}`);
+  if(!r.ok) {
+    const txt=await r.text();
+    if(/42P10|unique or exclusion constraint/i.test(txt)) { console.warn(`Geen unieke index op ${table}(${onConflict}); gewone POST. Draai de SQL-migratie v2.22.3.`); return dbPost(table, body); }
+    throw new Error(`POST ${table}: ${r.status} ${txt}`);
+  }
+  return r.json();
+}
 async function dbPost(table, body) {
   const r = await netFetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -1439,6 +1464,7 @@ async function loadAll() {
     document.getElementById('loading-screen').style.display='none';
     renderPage(currentPage);
     checkEmployee();
+    resumeCountAfterReload();   // v2.22.3
   } catch(e) {
     console.error('Laad fout:', e);
     setSyncing('error');
@@ -4498,24 +4524,74 @@ async function startCount(btn){
     if(created) openCountModal(created);
   });
 }
-function openCountModal(id){
+function openCountModal(id, restore){
   const c=getCount(id); if(!c) { alert('Deze telling is niet (meer) open.'); renderCountSettings(); return; }
   activeCountId=id;
   document.getElementById('count-title').textContent='Telling · '+countLabel(c);
-  document.getElementById('count-search').value='';
+  document.getElementById('count-search').value=(restore&&restore.q)||'';
   document.getElementById('count-status').textContent='';
-  document.getElementById('count-view').value='todo';
+  document.getElementById('count-view').value=(restore&&restore.view)||'todo';
   closeModal('modal-count-close');
   renderCountList();
   openModal('modal-count');
+  rememberActiveCount();
+  requestCountWakeLock();
 }
+// ---- v2.22.3: telling overleeft een herstart van de app ----
+// iOS sluit de pagina af als de telefoon vergrendelt en laadt hem daarna opnieuw;
+// de telling was dan dicht en moest via Instellingen weer geopend worden.
+const ACTIVE_COUNT_KEY='voorraad_active_count';
+function rememberActiveCount(){
+  try {
+    if(activeCountId==null) { localStorage.removeItem(ACTIVE_COUNT_KEY); return; }
+    localStorage.setItem(ACTIVE_COUNT_KEY, JSON.stringify({id:activeCountId, view:document.getElementById('count-view').value, q:document.getElementById('count-search').value}));
+  } catch(_) {}
+}
+function leaveCountModal(){
+  closeModal('modal-count');
+  activeCountId=null;
+  try { localStorage.removeItem(ACTIVE_COUNT_KEY); } catch(_) {}
+  releaseCountWakeLock();
+}
+function resumeCountAfterReload(){
+  let saved=null;
+  try { saved=JSON.parse(localStorage.getItem(ACTIVE_COUNT_KEY)||'null'); } catch(_) {}
+  if(!saved||!saved.id) return;
+  if(!getCurrentEmployee()||!isCurrentUserOwner()) return;
+  const c=getCount(saved.id);
+  if(!c) { try { localStorage.removeItem(ACTIVE_COUNT_KEY); } catch(_) {} return; }
+  if(currentPage!=='settings') { currentPage='settings'; renderPage('settings'); }
+  openCountModal(saved.id, saved);
+}
+// ---- v2.22.3: scherm aan houden tijdens tellen (Screen Wake Lock API) ----
+// Opgezocht: werkt in Safari sinds iOS 16.4, in beginscherm-apps sinds iOS 18.4.
+// Niet beschikbaar of geweigerd (lage batterij) → stil overslaan.
+let _countWakeLock=null;
+async function requestCountWakeLock(){
+  if(!('wakeLock' in navigator)) return;
+  try {
+    if(_countWakeLock && !_countWakeLock.released) return;
+    _countWakeLock=await navigator.wakeLock.request('screen');
+  } catch(e) { console.warn('Wake lock niet gekregen:', e.message||e); }
+}
+function releaseCountWakeLock(){
+  if(_countWakeLock) { try { _countWakeLock.release(); } catch(_) {} _countWakeLock=null; }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && document.getElementById('modal-count').classList.contains('open')) requestCountWakeLock();
+});
 function clearCountSearch(){ document.getElementById('count-search').value=''; renderCountList(); }
+function retryCountLine(productId){
+  const inp=document.getElementById('count-input-'+productId);
+  if(inp) saveCountLine(productId, inp); else document.getElementById('count-status').textContent='';
+}
 function renderCountList(){
   const c=getCount(activeCountId); if(!c) return;
   const pr=countProgress(c);
   document.getElementById('count-progress').textContent=`${pr.done} van ${pr.total} geteld${c.locationId?' (verwacht in bus)':''}`;
   const q=document.getElementById('count-search').value.trim();
   const view=document.getElementById('count-view').value;
+  rememberActiveCount();
   let prods=countProducts(c);
   if(q) prods=prods.filter(p=>productMatchesSearch(p,q));
   else if(view==='todo') prods=prods.filter(p=>!countLine(c.id,p.id)&&countExpected(c,p));
@@ -4563,19 +4639,41 @@ async function saveCountLine(productId, input){
       const systemQty=getLocQty(productId,c.locationId);
       const body={counted_qty:counted,system_qty:systemQty,employee_name:getCurrentEmployee()||null};
       if(existing) { await dbPatch('stock_count_lines',`id=eq.${existing.id}`,body); existing.counted=counted; existing.systemQty=systemQty; }
-      else { const rows=await dbPost('stock_count_lines',{count_id:c.id,product_id:productId,...body}); db.countLines.push(mapCountLineRow(rows[0])); }
+      else { const rows=await dbUpsert('stock_count_lines',{count_id:c.id,product_id:productId,...body},'count_id,product_id'); db.countLines.push(mapCountLineRow(rows[0])); }
     }
     status.textContent='';
-    const p=db.products.find(x=>x.id===productId);
-    const nameEl=document.getElementById('count-name-'+productId);
-    if(p&&nameEl) nameEl.innerHTML=(countLine(c.id,productId)?'✅ ':'')+p.name+((Array.isArray(p.color_codes)&&p.color_codes.length)?` <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${p.color_codes[0]}</span>`:'');
-    const pr=countProgress(c);
-    document.getElementById('count-progress').textContent=`${pr.done} van ${pr.total} geteld${c.locationId?' (verwacht in bus)':''}`;
+    markCountRowSaved(c, productId);
   } catch(e) {
     console.error('Telregel opslaan mislukt:', e);
+    // v2.22.3: bij een time-out kan de regel tóch zijn aangekomen (antwoord verloren).
+    // Eerst verse stand ophalen; staat hij er, dan is hij gewoon opgeslagen.
+    const timeout=/binnen \d+ seconden/.test(e.message||'');
+    if(timeout && await refreshCountLine(c.id, productId)) {
+      const l=countLine(c.id,productId);
+      if((raw===''&&!l)||(l&&Math.abs(l.counted-Number(raw))<1e-9)) { status.textContent='✅ Toch opgeslagen (antwoord kwam laat).'; input.style.borderColor=''; markCountRowSaved(c, productId); return; }
+    }
     input.style.borderColor='var(--red)';
-    status.textContent='Opslaan mislukt: '+(e.message||e)+' — pas het veld aan en probeer opnieuw.';
+    status.innerHTML='Opslaan mislukt: '+escapeHtml(e.message||String(e))+' <button onclick="retryCountLine('+productId+')" style="margin-left:6px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer">🔄 Opnieuw</button>';
   }
+}
+// Regel in beeld bijwerken zonder de lijst opnieuw te bouwen (anders verdwijnt een
+// net getelde regel meteen uit "Nog te tellen" en zie je niet wat je deed).
+function markCountRowSaved(c, productId){
+  const p=db.products.find(x=>x.id===productId);
+  const nameEl=document.getElementById('count-name-'+productId);
+  if(p&&nameEl) nameEl.innerHTML=(countLine(c.id,productId)?'✅ ':'')+p.name+((Array.isArray(p.color_codes)&&p.color_codes.length)?` <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${p.color_codes[0]}</span>`:'');
+  const pr=countProgress(c);
+  document.getElementById('count-progress').textContent=`${pr.done} van ${pr.total} geteld${c.locationId?' (verwacht in bus)':''}`;
+}
+function escapeHtml(t){ return String(t).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+// Verse stand van één telregel ophalen (na een time-out). true = ophalen gelukt.
+async function refreshCountLine(countId, productId){
+  try {
+    const rows=await dbGet('stock_count_lines',`count_id=eq.${countId}&product_id=eq.${productId}&order=id.asc`);
+    db.countLines=db.countLines.filter(l=>!(l.countId===countId&&l.productId===productId));
+    rows.forEach(r=>db.countLines.push(mapCountLineRow(r)));
+    return true;
+  } catch(_) { return false; }
 }
 function pickCountByScan(p){
   const c=getCount(activeCountId); if(!c) return;
@@ -4598,6 +4696,7 @@ async function openCountClose(id){
   const errEl=document.getElementById('count-close-error');
   const btn=document.getElementById('count-close-confirm');
   closeModal('modal-count');
+  releaseCountWakeLock();
   document.getElementById('count-close-intro').textContent=`${countLabel(c)} · ${lines.length} geteld. Even de actuele stand ophalen…`;
   listEl.innerHTML=''; totalEl.textContent=''; errEl.textContent=''; btn.disabled=true; _countCloseRows=null;
   openModal('modal-count-close');
@@ -4650,6 +4749,7 @@ async function confirmCountClose(btn){
     }
     await dbPatch('stock_counts',`id=eq.${c.id}`,{status:'closed',closed_by:getCurrentEmployee()||null,closed_at:new Date().toISOString()});
     _countCloseRows=null;
+    activeCountId=null; try { localStorage.removeItem(ACTIVE_COUNT_KEY); } catch(_) {}
     closeModal('modal-count-close');
     await loadAll();
   });
