@@ -254,6 +254,10 @@
   ║    └─ De knop stond alleen onder Instellingen (verborgen voor staff).║
   ║       Nu ook als link onderin modal-employee ("Wie ben jij vandaag?")║
   ║       en onderaan CHANGELOG_HTML. Zelfde URL, geen nieuwe logica.    ║
+  ║  • v2.24.3 — ⚡ Verbruik piekt inklapbaar, standaard dicht           ║
+  ║    └─ renderSpikeSection: kopregel met ▸/▾ + aantallen; kaarten     ║
+  ║       alleen bij open. Stand per container in spikeOpen (sessie),   ║
+  ║       dus sync-herrender klapt niet terug. Dashboard én bestellen.  ║
   ║  • v2.24.2 — Schap per regel in het telscherm                        ║
   ║    └─ countRowHtml: veld #count-shelf-{id} (alleen Magazijn +       ║
   ║       shelfColumnAvailable) → saveRowShelf: PATCH products shelf/   ║
@@ -1023,8 +1027,8 @@
 
 <script>
 // ====================== VERSIE-INFO ======================
-const APP_VERSION = '2.24.2';
-const BUILD_DATE = '2026-10-26';
+const APP_VERSION = '2.24.3';
+const BUILD_DATE = '2026-10-28';
 const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 
 // ====================== TOETSENBORD-COMPENSATIE (v2.9.9) ======================
@@ -1060,7 +1064,9 @@ const WELCOME_KEY = 'welcome_seen_v' + APP_VERSION;
 // Op false: alleen via Instellingen → Wat is nieuw zichtbaar (handig bij interne wijzigingen).
 const CHANGELOG_PUBLIC = true;
 const CHANGELOG_HTML = `
-  <strong>v${APP_VERSION}</strong> — schap per product invullen tijdens de telling:<br><br>
+  <strong>v${APP_VERSION}</strong> — piekenlijst uit de weg:<br><br>
+  • <strong>⚡ Verbruik piekt is ingeklapt</strong> op het dashboard en op de bestellen-tab. Je ziet alleen nog de kopregel met het aantal producten en, in rood, hoeveel er vóór de levering op zijn. Tik op de kopregel om de lijst open te klappen; nog een tik klapt hem weer dicht. Bij het opnieuw openen van de app staat hij weer dicht.<br><br>
+  <em>Eerder (v2.24.2):</em> schap per product invullen tijdens de telling:<br><br>
   • <strong>📍 Schapveld per regel</strong> (alleen bij een Magazijn-telling): naast het aantal staat nu een klein veld voor het schap, bv. <code>2A5</code>. Vul het in bij het product dat je voor je hebt en het wordt direct opgeslagen, los van het aantal. Staat er al een schap, dan zie je dat; aanpassen mag, leegmaken ook.<br><br>
   • De regel blijft tijdens deze telling gewoon op zijn plek staan; bij de volgende telling staat de lijst schap voor schap gesorteerd.<br><br>
   • Het bovenste schapveld (v2.23.0) blijft bestaan voor wie schap-voor-schap loopt, maar vult alleen nog producten die <em>nog geen</em> schap hebben. Wat je per regel invult wint dus altijd.<br><br>
@@ -1873,15 +1879,24 @@ function spikeCardHtml(x) {
       <div class="card-sub">Laatste ${SPIKE_WEEKS} wkn: <strong>${sp.recentWeekly} ${p.unit}/wk</strong> (daarvoor gem. ${sp.avgWeekly}) · voorraad ${roundQty(totalQty(p))} ${p.unit} = <strong style="color:${sp.urgent?'var(--red)':'inherit'}">${sp.wkLeftTxt} wk</strong> bij dit tempo · levertijd ${sp.lead} dgn · min ${p.min}${isOrderActive(p)?` · <span style="color:var(--accent2);font-weight:600">📦 besteld</span>`:''}</div>
     </div>`;
 }
+// v2.24.3: inklapbaar, standaard dicht. Stand per container, alleen voor deze sessie,
+// zodat de 5s-sync de lijst niet steeds terugklapt terwijl je kijkt.
+const spikeOpen = {};
+function toggleSpikeSection(containerId) {
+  spikeOpen[containerId]=!spikeOpen[containerId];
+  renderSpikeSection(containerId, true);
+}
 function renderSpikeSection(containerId, excludeLow) {
   const el=document.getElementById(containerId); if(!el) return;
   const rows=spikeProducts(excludeLow);
   if(!rows.length) { el.innerHTML=''; el.style.display='none'; return; }
   el.style.display='';
   const urg=rows.filter(x=>x.sp.urgent).length;
-  el.innerHTML=`<div class="section-hdr">⚡ Verbruik piekt${urg?` <span style="color:var(--red)">· ${urg} vóór levering op</span>`:''}</div>
-    <div class="card-sub" style="margin:-4px 0 8px;font-family:inherit">Minstens ${SPIKE_FACTOR}× het gemiddelde weekverbruik in de laatste ${SPIKE_WEEKS} weken. Rood = bij dit tempo is de voorraad op vóór de levertijd + 1 week; overweeg eerder te bestellen. Nog niet onder het minimum, dus staat niet vanzelf op de bestellijst.</div>
-    ${rows.map(spikeCardHtml).join('')}`;
+  const open=!!spikeOpen[containerId];
+  const esc=containerId.replace(/'/g,'');
+  el.innerHTML=`<div class="section-hdr" onclick="toggleSpikeSection('${esc}')" style="cursor:pointer;user-select:none;-webkit-user-select:none">${open?'▾':'▸'} ⚡ Verbruik piekt · ${rows.length} product${rows.length===1?'':'en'}${urg?` <span style="color:var(--red)">· ${urg} vóór levering op</span>`:''}</div>
+    ${open?`<div class="card-sub" style="margin:-4px 0 8px;font-family:inherit">Minstens ${SPIKE_FACTOR}× het gemiddelde weekverbruik in de laatste ${SPIKE_WEEKS} weken. Rood = bij dit tempo is de voorraad op vóór de levertijd + 1 week; overweeg eerder te bestellen. Nog niet onder het minimum, dus staat niet vanzelf op de bestellijst.</div>
+    ${rows.map(spikeCardHtml).join('')}`:''}`;
 }
 function renderUsageAdvice(p) {
   const box=document.getElementById('p-usage-advice'); if(!box) return;
